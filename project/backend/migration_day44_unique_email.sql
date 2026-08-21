@@ -1,0 +1,22 @@
+-- Day 44 migration: enforce a UNIQUE constraint on email.
+-- Without this, two students could silently share an email and the
+-- "duplicate email" error handling in POST /api/students would never
+-- actually trigger (MySQL would just allow the insert).
+--
+-- Run this AFTER the Day 42 migration (migration_day42_add_email.sql).
+--
+-- NOTE: if any existing rows already share the same email (or are both
+-- NULL), this ALTER will fail with a duplicate-key error. NULL values
+-- don't conflict with each other under a UNIQUE index, so pre-existing
+-- rows without an email are fine — only genuine duplicate email strings
+-- are a problem. Run this SELECT first to check:
+--
+--   SELECT email, COUNT(*) FROM students
+--   WHERE email IS NOT NULL
+--   GROUP BY email
+--   HAVING COUNT(*) > 1;
+--
+-- If that returns any rows, resolve them manually before running the
+-- ALTER below.
+
+ALTER TABLE students ADD CONSTRAINT uq_students_email UNIQUE (email);

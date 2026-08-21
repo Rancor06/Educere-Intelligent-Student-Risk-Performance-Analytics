@@ -1,0 +1,8 @@
+.reg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1.5rem; }
+.reg-grid .field.full { grid-column: 1 / -1; }
+.reg-section { margin-bottom: 1.8rem; }
+.reg-section h2 { font-size: 1rem; margin-bottom: 1rem; color: var(--ink); }
+.err-msg { font-size: 0.78rem; color: var(--rag-red); display: none; margin-top: -0.6rem; margin-bottom: 0.8rem; }
+.err-msg.show { display: block; }
+.field input.error { border-color: var(--rag-red); }
+@media (max-width: 700px) { .reg-grid { grid-template-columns: 1fr; } }

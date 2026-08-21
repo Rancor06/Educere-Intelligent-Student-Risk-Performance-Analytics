@@ -1,0 +1,225 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+/* Scoped to .app-shell-stacked (the wrapper PredictorPage renders these
+   components inside) rather than :root. These variable names collide
+   with edutrack.css's own --ink/--brand/etc (different values) — since
+   Vite bundles all imported CSS into one stylesheet, a :root here would
+   silently override Educere's site-wide color scheme on every page.
+   Custom properties still inherit normally to every descendant of
+   .app-shell-stacked, so nothing changes for these components themselves. */
+.app-shell-stacked {
+  --ink: #1A2233;
+  --ink-soft: #5B6478;
+  --paper: #F5F7FA;
+  --paper-raised: #FFFFFF;
+  --line: #E1E5EC;
+  --brand: #33415C;
+  --radius: 6px;
+  --font-display: "Space Grotesk", "Segoe UI", sans-serif;
+  --font-body: "IBM Plex Sans", -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+}
+
+.app-shell-stacked, .app-shell-stacked * { box-sizing: border-box; }
+
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.app-shell-stacked {
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.quick-risk-check {
+  width: 100%;
+  max-width: 520px;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.8rem 2rem 2.2rem;
+}
+
+.qrc-intro h1 {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 0.5rem;
+}
+
+.qrc-intro p {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  margin: 0 0 1.6rem;
+}
+
+.qrc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
+}
+
+.qrc-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.qrc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.qrc-field span {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.qrc-field input {
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  padding: 0.6em 0.8em;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper-raised);
+  color: var(--ink);
+}
+
+.qrc-field input:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(51,65,92,0.12);
+}
+
+.risk-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+}
+
+.risk-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.9rem;
+}
+
+.risk-card-label {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.risk-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.28em 0.65em;
+  border-radius: 999px;
+}
+
+.risk-pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.risk-metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.87rem;
+}
+
+.risk-metric-row:last-child { border-bottom: none; }
+.risk-metric-row .k { color: var(--ink-soft); }
+.risk-metric-row .v { font-family: var(--font-mono); font-weight: 600; }
+
+@media (max-width: 480px) {
+  .qrc-inputs { grid-template-columns: 1fr; }
+}
+/* Day 47: PredictionForm (real /api/predict call, not a local heuristic) */
+.prediction-form-wrap {
+  width: min(100%, 980px);
+  margin-top: .4rem;
+}
+
+.predictor-workspace .prediction-model-form {
+  display: block;
+  padding: 1.4rem;
+  margin: 0;
+}
+
+.predictor-workspace .pf-section {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .85rem;
+  padding: 1rem;
+}
+
+.predictor-workspace .pf-section legend { grid-column: 1 / -1; }
+.predictor-workspace .pf-section label { min-width: 0; }
+.predictor-workspace .pf-section input:not([type="checkbox"]) { width: 100%; background: #fff; color: #1A2233; }
+.predictor-workspace .pf-section:has(.pf-toggles) { display: block; }
+.predictor-workspace .pf-toggles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem 1rem; }
+.predictor-workspace .pf-toggle { display: grid; grid-template-columns: 18px 1fr; align-items: center; gap: .55rem; margin: 0; }
+.predictor-workspace .pf-toggle input { width: auto !important; margin: 0; }
+.predictor-workspace .prediction-model-form > button { margin-top: .25rem; }
+
+@media (max-width: 720px) {
+  .predictor-workspace .pf-section { grid-template-columns: 1fr; }
+  .predictor-workspace .pf-toggles { grid-template-columns: 1fr; }
+}
+
+.pf-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 0.4rem 0 1rem;
+}
+
+.pf-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.pf-toggle input {
+  width: auto;
+}
+
+.pf-section {
+  border: 1px solid rgba(26, 34, 51, 0.12);
+  border-radius: 10px;
+  padding: 0.8rem 1rem 1rem;
+  margin: 0 0 1rem;
+}
+
+.pf-section legend {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  padding: 0 0.3rem;
+}

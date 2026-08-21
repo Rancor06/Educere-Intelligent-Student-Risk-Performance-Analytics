@@ -1,0 +1,388 @@
+{
+  "info": {
+    "name": "Student Management API",
+    "_postman_id": "d45-student-mgmt-api",
+    "description": "Day 45 \u2014 API testing collection for the EduTrack Student Management app (React -> Flask -> MySQL).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:5000"
+    }
+  ],
+  "item": [
+    {
+      "name": "GET /api/students - list all students",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/students",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "students"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /api/students - valid student",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Test Student\",\n  \"email\": \"test@example.com\",\n  \"course\": \"Computer Science\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/students",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "students"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /api/students - empty name",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"\",\n  \"email\": \"test2@example.com\",\n  \"course\": \"IT\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/students",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "students"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /api/students - missing email",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Test Student\",\n  \"course\": \"IT\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/students",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "students"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /api/students - missing course",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Test Student\",\n  \"email\": \"test3@example.com\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/students",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "students"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /api/students - empty JSON body",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/students",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "students"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /api/students - no request body",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/students",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "students"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /api/students - duplicate email",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Another Student\",\n  \"email\": \"test@example.com\",\n  \"course\": \"IT\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/students",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "students"
+          ]
+        },
+        "description": "Run the 'valid student' request first so this email already exists."
+      }
+    },
+    {
+      "name": "GET /api/student - invalid endpoint",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/student",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "student"
+          ]
+        }
+      }
+    },
+    {
+      "name": "DELETE /api/students - unsupported method",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/students",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "students"
+          ]
+        }
+      }
+    },
+    {
+      "name": "POST /api/predict - valid prediction",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/predict",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "predict"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"marital_status\": 1,\n  \"application_mode\": 17,\n  \"application_order\": 5,\n  \"course\": 171,\n  \"daytime_evening_attendance\": 1,\n  \"previous_qualification\": 1,\n  \"previous_qualification_grade\": 122.0,\n  \"nationality\": 1,\n  \"mothers_qualification\": 19,\n  \"fathers_qualification\": 12,\n  \"mothers_occupation\": 5,\n  \"fathers_occupation\": 9,\n  \"admission_grade\": 127.3,\n  \"displaced\": 1,\n  \"educational_special_needs\": 0,\n  \"debtor\": 0,\n  \"tuition_up_to_date\": 1,\n  \"gender\": 1,\n  \"scholarship_holder\": 0,\n  \"age_at_enrollment\": 20,\n  \"international\": 0,\n  \"units_credited_sem1\": 0,\n  \"units_enrolled_sem1\": 0,\n  \"units_evaluations_sem1\": 0,\n  \"units_approved_sem1\": 0,\n  \"grade_sem1\": 0.0,\n  \"units_without_eval_sem1\": 0,\n  \"units_credited_sem2\": 0,\n  \"units_enrolled_sem2\": 0,\n  \"units_evaluations_sem2\": 0,\n  \"units_approved_sem2\": 0,\n  \"grade_sem2\": 0.0,\n  \"units_without_eval_sem2\": 0,\n  \"unemployment_rate\": 10.8,\n  \"inflation_rate\": 1.4,\n  \"gdp\": 1.74\n}"
+        }
+      }
+    },
+    {
+      "name": "POST /api/predict - missing fields",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/predict",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "predict"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"course\": 171\n}"
+        }
+      }
+    },
+    {
+      "name": "POST /api/predict - empty JSON body",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/predict",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "predict"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "POST /api/predict - wrong data type",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/predict",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "predict"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"marital_status\": 1,\n  \"application_mode\": 17,\n  \"application_order\": 5,\n  \"course\": 171,\n  \"daytime_evening_attendance\": 1,\n  \"previous_qualification\": 1,\n  \"previous_qualification_grade\": 122.0,\n  \"nationality\": 1,\n  \"mothers_qualification\": 19,\n  \"fathers_qualification\": 12,\n  \"mothers_occupation\": 5,\n  \"fathers_occupation\": 9,\n  \"admission_grade\": 127.3,\n  \"displaced\": 1,\n  \"educational_special_needs\": 0,\n  \"debtor\": 0,\n  \"tuition_up_to_date\": 1,\n  \"gender\": 1,\n  \"scholarship_holder\": 0,\n  \"age_at_enrollment\": \"not_a_number\",\n  \"international\": 0,\n  \"units_credited_sem1\": 0,\n  \"units_enrolled_sem1\": 0,\n  \"units_evaluations_sem1\": 0,\n  \"units_approved_sem1\": 0,\n  \"grade_sem1\": 0.0,\n  \"units_without_eval_sem1\": 0,\n  \"units_credited_sem2\": 0,\n  \"units_enrolled_sem2\": 0,\n  \"units_evaluations_sem2\": 0,\n  \"units_approved_sem2\": 0,\n  \"grade_sem2\": 0.0,\n  \"units_without_eval_sem2\": 0,\n  \"unemployment_rate\": 10.8,\n  \"inflation_rate\": 1.4,\n  \"gdp\": 1.74\n}"
+        }
+      }
+    },
+    {
+      "name": "POST /api/predict - invalid binary value",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/predict",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "predict"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"marital_status\": 1,\n  \"application_mode\": 17,\n  \"application_order\": 5,\n  \"course\": 171,\n  \"daytime_evening_attendance\": 1,\n  \"previous_qualification\": 1,\n  \"previous_qualification_grade\": 122.0,\n  \"nationality\": 1,\n  \"mothers_qualification\": 19,\n  \"fathers_qualification\": 12,\n  \"mothers_occupation\": 5,\n  \"fathers_occupation\": 9,\n  \"admission_grade\": 127.3,\n  \"displaced\": 1,\n  \"educational_special_needs\": 0,\n  \"debtor\": 5,\n  \"tuition_up_to_date\": 1,\n  \"gender\": 1,\n  \"scholarship_holder\": 0,\n  \"age_at_enrollment\": 20,\n  \"international\": 0,\n  \"units_credited_sem1\": 0,\n  \"units_enrolled_sem1\": 0,\n  \"units_evaluations_sem1\": 0,\n  \"units_approved_sem1\": 0,\n  \"grade_sem1\": 0.0,\n  \"units_without_eval_sem1\": 0,\n  \"units_credited_sem2\": 0,\n  \"units_enrolled_sem2\": 0,\n  \"units_evaluations_sem2\": 0,\n  \"units_approved_sem2\": 0,\n  \"grade_sem2\": 0.0,\n  \"units_without_eval_sem2\": 0,\n  \"unemployment_rate\": 10.8,\n  \"inflation_rate\": 1.4,\n  \"gdp\": 1.74\n}"
+        }
+      }
+    },
+    {
+      "name": "POST /api/predict - no request body",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/predict",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "predict"
+          ]
+        }
+      }
+    }
+  ]
+}
