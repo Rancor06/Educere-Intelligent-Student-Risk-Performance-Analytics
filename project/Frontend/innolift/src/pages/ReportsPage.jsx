@@ -62,9 +62,6 @@ function ReportsPage() {
           <h1>Reports</h1>
           <p className="sub">Cohort-level patterns behind the individual risk scores.</p>
         </div>
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
         <button className="btn btn-primary" onClick={downloadCsv}>&#8595; Download cohort report</button>
       </div>
 

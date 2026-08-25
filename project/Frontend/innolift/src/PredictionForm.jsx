@@ -5,6 +5,7 @@ import {
   MARITAL_STATUS, APPLICATION_MODE, COURSE, PREVIOUS_QUALIFICATION, NATIONALITY,
   MOTHERS_QUALIFICATION, FATHERS_QUALIFICATION, MOTHERS_OCCUPATION, FATHERS_OCCUPATION,
 } from './datasetCodes';
+import './pages/StudentIntelligence.css';
 
 // Day 47: unlike QuickRiskCheck (a local, rule-based "live preview" — see
 // that file's own comments), this form sends real input to the actual
@@ -158,13 +159,40 @@ const EMPTY_FORM = Object.fromEntries(
   ALL_FIELD_KEYS.map((key) => [key, PREDICTION_TOGGLES.some((t) => t.key === key) ? false : ''])
 );
 
-const STATUS_STYLES = {
-  Dropout: { bg: '#FBEAE9', fg: '#C4433F', dot: '#C4433F' },
-  Enrolled: { bg: '#FBF0DD', fg: '#B9781E', dot: '#B9781E' },
-  Graduate: { bg: '#E7F4ED', fg: '#2F8558', dot: '#2F8558' },
-};
+// Result box + "AT RISK" style label for each raw model class.
+const RESULT_BOX_CLASS = { Dropout: '', Enrolled: 'medium', Graduate: 'low' };
+const RESULT_HEADLINE = { Dropout: 'AT RISK', Enrolled: 'WATCH', Graduate: 'ON TRACK' };
+
+// Groups the 4-step wizard around the same PREDICTION_SECTIONS used
+// everywhere else in the app (see the "Add Student" wizard in
+// StudentIntelligence.jsx) — no fields added or removed, just organized
+// into digestible steps instead of one long scroll.
+const STEPS = [
+  { num: 1, label: 'Enrollment details', sub: 'Basic academic and admission info' },
+  { num: 2, label: 'Academic performance', sub: 'Semester-wise performance' },
+  { num: 3, label: 'Background', sub: 'Family & personal background' },
+  { num: 4, label: 'Review & predict', sub: 'See inputs and get prediction' },
+];
+
+// Same cohort-level feature importances shown on the Reports page's
+// "Cohort risk drivers" card — this model doesn't expose a per-prediction
+// breakdown, so the preview panel shows what drives risk across the
+// cohort generally rather than claiming a per-student figure.
+const COHORT_DRIVERS = [
+  { name: 'Attendance rate', pct: 85, level: 'High' },
+  { name: '1st sem. units approved', pct: 80, level: 'High' },
+  { name: 'Admission grade', pct: 55, level: 'Moderate' },
+  { name: 'Tuition fees up to date', pct: 50, level: 'Moderate' },
+  { name: 'Scholarship holder', pct: 20, level: 'Low' },
+];
+const DRIVER_COLOR = { High: 'var(--rag-red)', Moderate: 'var(--rag-amber)', Low: 'var(--rag-green)' };
+
+function sectionByTitle(title) {
+  return PREDICTION_SECTIONS.find((s) => s.title === title);
+}
 
 function PredictionForm() {
+  const [step, setStep] = useState(1);
   const [form, setForm] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -174,6 +202,7 @@ function PredictionForm() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (step < 4) { setStep((s) => Math.min(4, s + 1)); return; }
     setLoading(true);
     setError(null);
     setResult(null);
@@ -211,81 +240,128 @@ function PredictionForm() {
     }
   };
 
-  const style = result ? STATUS_STYLES[result.prediction] : null;
+  const renderFields = (fields) => fields.map(({ key, label, ...field }) => (
+    <label key={key}>
+      {label}
+      <PredictionField field={field} value={form[key]} onChange={(value) => setField(key, value)} />
+    </label>
+  ));
+
+  const enrollment = sectionByTitle('Enrollment details');
+  const semester1 = sectionByTitle('Semester 1');
+  const semester2 = sectionByTitle('Semester 2');
+  const family = sectionByTitle('Family background');
+  const macro = sectionByTitle('Macroeconomic indicators (at enrollment)');
+
+  const resultKey = result ? RESULT_BOX_CLASS[result.prediction] : null;
 
   return (
-    <div className="prediction-form-wrap">
-      <div className="qrc-intro">
-        <h1>Independent risk prediction</h1>
-        <p>
-          This is for a one-off model check. The prediction is returned by the trained model and is not saved to a student record.
-        </p>
+    <div className="prediction-wizard">
+      <div className="stepper">
+        {STEPS.map((s) => (
+          <button
+            type="button"
+            key={s.num}
+            className={`step-chip${step === s.num ? ' active' : ''}`}
+            onClick={() => setStep(s.num)}
+          >
+            <span className="step-num">{s.num}</span>
+            <span className="step-text">
+              <span className="step-label">{s.label}</span>
+              <span className="step-sub">{s.sub}</span>
+            </span>
+          </button>
+        ))}
       </div>
 
-      <form className="student-form prediction-model-form" onSubmit={handleSubmit}>
-        {PREDICTION_SECTIONS.map((section) => (
-          <fieldset className="pf-section" key={section.title}>
-            <legend>{section.title}</legend>
-            {section.fields.map(({ key, label, ...field }) => (
-              <label key={key}>
-                {label}
-                <PredictionField field={field} value={form[key]} onChange={(value) => setField(key, value)} />
-              </label>
-            ))}
-          </fieldset>
-        ))}
-
-        <fieldset className="pf-section">
-          <legend>Yes / no</legend>
-          <div className="pf-toggles">
-            {PREDICTION_TOGGLES.map(({ key, label }) => (
-              <label key={key} className="pf-toggle">
-                <input
-                  type="checkbox"
-                  checked={form[key]}
-                  onChange={(e) => setField(key, e.target.checked)}
-                />
-                {label}
-              </label>
-            ))}
+      <form className="predictor-grid" onSubmit={handleSubmit}>
+        <div className="panel chart-panel">
+          <div className="panel-body">
+            {step === 1 && <div className="predictor-fields">{renderFields(enrollment.fields)}</div>}
+            {step === 2 && (
+              <>
+                <h3 className="pf-subhead">Semester 1</h3>
+                <div className="predictor-fields">{renderFields(semester1.fields)}</div>
+                <h3 className="pf-subhead">Semester 2</h3>
+                <div className="predictor-fields">{renderFields(semester2.fields)}</div>
+              </>
+            )}
+            {step === 3 && (
+              <>
+                <h3 className="pf-subhead">Family background</h3>
+                <div className="predictor-fields">{renderFields(family.fields)}</div>
+                <h3 className="pf-subhead">Macroeconomic indicators</h3>
+                <div className="predictor-fields">{renderFields(macro.fields)}</div>
+                <h3 className="pf-subhead">Student status</h3>
+                <div className="predictor-toggles">
+                  {PREDICTION_TOGGLES.map(({ key, label }) => (
+                    <label key={key}>
+                      <input type="checkbox" checked={form[key]} onChange={(e) => setField(key, e.target.checked)} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+            {step === 4 && (
+              <>
+                <h3 className="pf-subhead">Review &amp; predict</h3>
+                <p className="chart-note">
+                  Double-check the details entered across the previous steps, then run the trained model.
+                  Nothing here is saved — to keep a student record along with their prediction, use the Student Directory instead.
+                </p>
+              </>
+            )}
           </div>
-        </fieldset>
-
-        <button type="submit" disabled={loading}>
-          {loading ? (
-            <>
-              <span className="spinner" aria-hidden="true" />
-              Generating prediction…
-            </>
-          ) : (
-            'Predict'
-          )}
-        </button>
-
-        {error && <p className="sf-message sf-message-error">{error}</p>}
-      </form>
-
-      {result && style && (
-        <div className="risk-card">
-          <div className="risk-card-head">
-            <span className="risk-card-label">Model prediction</span>
-            <span className="risk-pill" style={{ background: style.bg, color: style.fg }}>
-              <span className="risk-pill-dot" style={{ background: style.dot }} />
-              {result.prediction}
-            </span>
+          <div className="predict-actions">
+            {step > 1 && <button type="button" className="btn btn-ghost" onClick={() => setStep((s) => Math.max(1, s - 1))}>Back</button>}
+            {step < 4
+              ? <button type="submit" className="btn btn-primary">Next →</button>
+              : <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? 'Generating prediction…' : 'Run prediction'}</button>}
           </div>
-          <div className="risk-metric-row">
-            <span className="k">Confidence</span>
-            <span className="v">{Math.round(result.confidence * 100)}%</span>
-          </div>
-          {Object.entries(result.probabilities).map(([label, p]) => (
-            <div className="risk-metric-row" key={label}>
-              <span className="k">{label}</span>
-              <span className="v">{Math.round(p * 100)}%</span>
-            </div>
-          ))}
         </div>
-      )}
+
+        <div className="panel chart-panel">
+          <div className="panel-body shield-wrap">
+            <h3 className="panel-title">What happens next?</h3>
+            <div className="shield">
+              <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+            </div>
+            <div className="whatnext-item"><span className="whatnext-num">1</span>We analyze the inputs using the trained model.</div>
+            <div className="whatnext-item"><span className="whatnext-num">2</span>You&rsquo;ll get a risk level and key contributing factors.</div>
+            <div className="whatnext-item"><span className="whatnext-num">3</span>No student record will be created or saved.</div>
+          </div>
+        </div>
+
+        <div className="panel chart-panel">
+          <div className="panel-body">
+            <h3 className="panel-title" style={{ marginBottom: '0.9rem' }}>Prediction preview</h3>
+            {error && <p className="wizard-error">{error}</p>}
+            {!result && !error && <p className="chart-note">Work through the steps and run the model to see a result here.</p>}
+            {result && (
+              <>
+                <div className={`risk-result ${resultKey}`}>
+                  <div className="risk-result-label">{RESULT_HEADLINE[result.prediction] || result.prediction}</div>
+                  <p className="chart-note" style={{ margin: '0.4rem 0 0' }}>Confidence</p>
+                  <div className="risk-result-pct">{Math.round(result.confidence * 100)}%</div>
+                </div>
+                <h3 className="pf-subhead" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Key contributing factors <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--ink-faint)' }}>(cohort model)</span>
+                </h3>
+                {COHORT_DRIVERS.map((driver) => (
+                  <div className="factor" key={driver.name}>
+                    <div className="factor-label"><span className="name">{driver.name}</span><span className="weight" style={{ color: DRIVER_COLOR[driver.level] }}>{driver.level}</span></div>
+                    <div className="factor-bar"><span style={{ width: `${driver.pct}%`, background: DRIVER_COLOR[driver.level] }}></span></div>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: '0.6rem', marginTop: '1rem' }}>
+                  <button type="button" className="btn btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => window.print()}>&#8595; Download PDF</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </form>
     </div>
   );
 }

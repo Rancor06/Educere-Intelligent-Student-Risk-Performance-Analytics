@@ -179,7 +179,7 @@
 
 .predictor-workspace .pf-section legend { grid-column: 1 / -1; }
 .predictor-workspace .pf-section label { min-width: 0; }
-.predictor-workspace .pf-section input:not([type="checkbox"]) { width: 100%; background: #fff; color: #1A2233; }
+.predictor-workspace .pf-section input:not([type="checkbox"]) { width: 100%; background: var(--paper-raised); color: var(--ink); }
 .predictor-workspace .pf-section:has(.pf-toggles) { display: block; }
 .predictor-workspace .pf-toggles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem 1rem; }
 .predictor-workspace .pf-toggle { display: grid; grid-template-columns: 18px 1fr; align-items: center; gap: .55rem; margin: 0; }

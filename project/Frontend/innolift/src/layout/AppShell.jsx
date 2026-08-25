@@ -28,9 +28,42 @@ function NavIcon({ name }) {
   return <svg className="nav-icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
 }
 
+const THEME_KEY = 'educere-theme';
+
+// Dark is the app's default appearance; the toggle lets a person switch to
+// light and stick with it. Applied as a data-theme attribute on <html> so
+// every stylesheet's `html[data-theme="..."]` overrides just work.
+function useTheme() {
+  const [theme, setTheme] = useState(() => localStorage.getItem(THEME_KEY) || 'dark');
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem(THEME_KEY, theme);
+  }, [theme]);
+  return [theme, setTheme];
+}
+
+function ThemeToggle({ theme, onToggle }) {
+  const isDark = theme === 'dark';
+  return (
+    <button
+      className="theme-toggle"
+      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      onClick={onToggle}
+    >
+      {isDark ? (
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2" /><path d="M12 2.5v2M12 19.5v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2.5 12h2M19.5 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" /></svg>
+      ) : (
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" fill="currentColor" stroke="none" /></svg>
+      )}
+    </button>
+  );
+}
+
 function AppShell({ active, children }) {
   const navigate = useNavigate();
   const [navOpen, setNavOpen] = useState(false);
+  const [theme, setTheme] = useTheme();
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem('educere-sidebar-collapsed') === 'true'
   );
@@ -84,6 +117,7 @@ function AppShell({ active, children }) {
           </div>
         </div>
         <div className="header-right">
+          <ThemeToggle theme={theme} onToggle={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} />
           <span className="header-user">{user.name}</span>
           <a href="#" className="btn btn-ghost" onClick={handleSignOut}>Sign out</a>
         </div>
@@ -125,13 +159,7 @@ export function Footer() {
   return (
     <footer className="app-footer">
       <div className="footer-inner">
-        <div className="footer-brand">
-          <div className="glyph"><Logo /></div>
-          <div>
-            <div className="name">Educere</div>
-            <div className="tagline">Intelligent student risk &amp; performance analytics</div>
-          </div>
-        </div>
+        <div className="footer-brand"><b>Educere</b> — Intelligent student risk &amp; performance analytics</div>
         <nav className="footer-links">
           <Link to="/">Home</Link>
           <Link to="/login?role=student">Student login</Link>
@@ -139,7 +167,7 @@ export function Footer() {
         </nav>
         <div className="footer-contact">
           <a href="mailto:support@educere.app">support@educere.app</a><br />
-          &copy; 2026 Educere &mdash; Innolift Ventures capstone
+          &copy; 2026 Educere
         </div>
       </div>
     </footer>

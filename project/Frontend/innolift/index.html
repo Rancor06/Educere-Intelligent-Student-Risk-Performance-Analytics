@@ -7,6 +7,13 @@
     <title>Educere — Intelligent Student Risk & Performance Analytics</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+      // Set the theme before first paint so there's no flash of the wrong
+      // theme; AppShell's useTheme hook takes over from here.
+      try {
+        document.documentElement.setAttribute('data-theme', localStorage.getItem('educere-theme') || 'dark');
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
