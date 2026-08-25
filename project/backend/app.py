@@ -1,4 +1,5 @@
 import time
+import os
 import json
 from functools import wraps
 from flask import Flask, request, jsonify, session
@@ -15,8 +16,15 @@ from ml.model import (
 )
 
 app = Flask(__name__)
-app.secret_key = "change-this-to-a-real-secret-key"
-CORS(app, supports_credentials=True)  # frontend runs on a different port/origin
+
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-key")
+
+app.config.update(
+    SESSION_COOKIE_SAMESITE="None",
+    SESSION_COOKIE_SECURE=True,
+)
+
+CORS(app, supports_credentials=True)
 
 
 # ---------- Auth helpers ----------
