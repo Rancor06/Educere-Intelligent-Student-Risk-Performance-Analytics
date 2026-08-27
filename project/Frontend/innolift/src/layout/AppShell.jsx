@@ -85,12 +85,19 @@ function AppShell({ active, children }) {
     };
   }, []);
 
+  // The header hamburger is the single menu control at every width now
+  // that the sidebar's own duplicate toggle is hidden (see edutrack.css).
+  // On desktop it still collapses the sidebar rail; on compact/mobile
+  // widths .sidebar-nav is what's actually hidden/shown, so this also
+  // flips navOpen — harmless at desktop widths, since collapsed has no
+  // effect once the sidebar goes full-width, and vice versa.
   const toggleCollapse = () => {
     setCollapsed((prev) => {
       const next = !prev;
       localStorage.setItem('educere-sidebar-collapsed', String(next));
       return next;
     });
+    setNavOpen((prev) => !prev);
   };
 
   const handleSignOut = async (e) => {

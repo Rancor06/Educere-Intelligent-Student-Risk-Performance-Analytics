@@ -1,22 +1,15 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AppShell from '../layout/AppShell';
-
-const COURSE_ROWS = [
-  ['Nursing', 2, '87%', '12.1', 0],
-  ['Management', 1, '100%', '11.2', 0],
-  ['Veterinary Nursing', 1, '100%', '14.4', 0],
-  ['Advertising & Marketing Mgmt', 1, '80%', '12.2', 0],
-  ['Social Service', 1, '83%', '11.8', 0],
-  ['Basic Education', 1, '86%', '12.3', 0],
-  ['Informatics Engineering', 1, '20%', '11.3', 1],
-  ['Tourism', 1, '0%', '—', 1],
-  ['Equinculture', 1, '0%', '—', 1],
-];
+import PanelLoader from '../components/PanelLoader';
+import { API_BASE } from '../apiBase';
+import { statusRaw } from '../riskLabel';
 
 // Converted from reports.html + the attendance-trend SVG builder that
 // used to live in app.js — same 6-week illustrative series, same line
 // chart, just rendered directly as JSX instead of injected via
-// innerHTML on window load.
+// innerHTML on window load. Left as illustrative (see panel-head note
+// below) because the source dataset is a single end-of-semester
+// snapshot with no weekly records to chart for real.
 
 function TrendChart() {
   const data = [88, 85, 83, 80, 79, 81];
@@ -40,10 +33,69 @@ function TrendChart() {
   );
 }
 
+const RISK_LABEL = { Dropout: 'At risk', Enrolled: 'Watch', Graduate: 'On track' };
+
 function ReportsPage() {
-  const downloadCsv = useMemo(() => () => {
+  const [students, setStudents] = useState([]);
+  const [importances, setImportances] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      fetch(`${API_BASE}/admin/students`, { credentials: 'include' }).then((r) => (r.ok ? r.json() : Promise.reject(new Error('roster')))),
+      fetch(`${API_BASE}/api/model-info?top=5`).then((r) => (r.ok ? r.json() : { feature_importances: [] })),
+    ]).then(([roster, modelInfo]) => {
+      if (!active) return;
+      setStudents(Array.isArray(roster) ? roster : []);
+      setImportances(modelInfo.feature_importances || []);
+      setError('');
+    }).catch(() => { if (active) setError('Could not load live cohort data — is the Flask app running and are you logged in as admin?'); })
+      .finally(() => active && setLoading(false));
+    return () => { active = false; };
+  }, []);
+
+  // Real risk distribution — counted from each student's actual saved
+  // prediction (risk_prediction), not a static mock split.
+  const distribution = useMemo(() => {
+    const tally = { 'On track': 0, Watch: 0, 'At risk': 0, 'Not analysed': 0 };
+    students.forEach((student) => {
+      const raw = statusRaw(student);
+      const label = RISK_LABEL[raw] || (raw !== 'Not analysed' ? raw : null);
+      tally[label && tally[label] !== undefined ? label : 'Not analysed'] += 1;
+    });
+    return tally;
+  }, [students]);
+  const analysedTotal = students.length - distribution['Not analysed'];
+  const pct = (n) => (analysedTotal ? Math.round((n / analysedTotal) * 100) : 0);
+
+  // Real per-course rollup — grouped from live student records rather
+  // than a hardcoded course table.
+  const courseRows = useMemo(() => {
+    const byCourse = new Map();
+    students.forEach((student) => {
+      const course = student.course || 'No course recorded';
+      if (!byCourse.has(course)) byCourse.set(course, []);
+      byCourse.get(course).push(student);
+    });
+    return [...byCourse.entries()].map(([course, list]) => {
+      const enrolled = list.reduce((sum, s) => sum + (Number(s.units_1st_sem_enrolled) || 0) + (Number(s.units_2nd_sem_enrolled) || 0), 0);
+      const approved = list.reduce((sum, s) => sum + (Number(s.units_1st_sem_approved) || 0) + (Number(s.units_2nd_sem_approved) || 0), 0);
+      const completion = enrolled ? `${Math.round((approved / enrolled) * 100)}%` : '—';
+      const gpaValues = list.map((s) => Number(s.gpa)).filter((v) => !Number.isNaN(v) && v > 0);
+      // GPA is stored on a 0-10 scale (see seed_students.py); shown here
+      // on the dataset's native 0-20 grade scale for consistency with
+      // "Curricular units (grade)", which is what the model was trained on.
+      const avgGrade = gpaValues.length ? (gpaValues.reduce((a, b) => a + b, 0) / gpaValues.length * 2).toFixed(1) : '—';
+      const atRisk = list.filter((s) => (RISK_LABEL[s.risk_prediction] || s.risk_prediction) === 'At risk').length;
+      return [course, list.length, completion, avgGrade, atRisk];
+    }).sort((a, b) => b[1] - a[1]);
+  }, [students]);
+
+  const downloadCsv = () => {
     const rows = [['Course', 'Students', 'Avg. completion', 'Avg. grade (0-20)', 'At risk'],
-      ...COURSE_ROWS.map((r) => r.map(String))];
+      ...courseRows.map((r) => r.map(String))];
     const csv = rows.map((r) => r.map((v) => `"${v.replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -52,92 +104,90 @@ function ReportsPage() {
     a.download = `educere-cohort-report-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, []);
+  };
+
+  const maxImportance = importances.length ? importances[0].importance : 1;
 
   return (
     <AppShell active="/reports">
       <div className="topbar">
         <div>
-          <span className="eyebrow">Cohort · CS-2026-A</span>
+          <span className="eyebrow">Cohort</span>
           <h1>Reports</h1>
           <p className="sub">Cohort-level patterns behind the individual risk scores.</p>
         </div>
-        <button className="btn btn-primary" onClick={downloadCsv}>&#8595; Download cohort report</button>
+        <button className="btn btn-primary" onClick={downloadCsv} disabled={!courseRows.length}>&#8595; Download cohort report</button>
       </div>
 
-      <div className="panel chart-panel">
-        <div className="panel-head"><h2>Risk distribution</h2></div>
-        <div className="panel-body">
-          <p className="chart-note">Based on the 10 students sampled from the real UCI dropout-risk dataset.</p>
-          <div className="distribution-bar">
-            <span className="seg-green" style={{ width: '50%' }}></span>
-            <span className="seg-amber" style={{ width: '20%' }}></span>
-            <span className="seg-red" style={{ width: '30%' }}></span>
-          </div>
-          <div className="legend">
-            <span><span className="dot green"></span>On track — <strong>5</strong></span>
-            <span><span className="dot amber"></span>Watch — <strong>2</strong></span>
-            <span><span className="dot red"></span>At risk — <strong>3</strong></span>
-          </div>
-        </div>
-      </div>
-
-      <div className="reports-grid">
+      {loading ? <PanelLoader label="Loading cohort report…" /> : error ? <p className="wizard-error">{error}</p> : <>
         <div className="panel chart-panel">
-          <div className="panel-head">
-            <h2>Engagement trend <span style={{ fontSize: '0.7rem', color: 'var(--ink-soft)', fontWeight: 400 }}>(illustrative)</span></h2>
-          </div>
+          <div className="panel-head"><h2>Risk distribution</h2></div>
           <div className="panel-body">
-            <p className="chart-note">The source dataset is a single end-of-semester snapshot, not weekly records — this chart shows the shape a real trend view would take once attendance/engagement tracking is wired in.</p>
-            <TrendChart />
+            <p className="chart-note">Based on the {students.length} students currently in the Student Directory{distribution['Not analysed'] ? ` (${distribution['Not analysed']} not yet analysed)` : ''}.</p>
+            <div className="distribution-bar">
+              <span className="seg-green" style={{ width: `${pct(distribution['On track'])}%` }}></span>
+              <span className="seg-amber" style={{ width: `${pct(distribution.Watch)}%` }}></span>
+              <span className="seg-red" style={{ width: `${pct(distribution['At risk'])}%` }}></span>
+            </div>
+            <div className="legend">
+              <span><span className="dot green"></span>On track — <strong>{distribution['On track']}</strong></span>
+              <span><span className="dot amber"></span>Watch — <strong>{distribution.Watch}</strong></span>
+              <span><span className="dot red"></span>At risk — <strong>{distribution['At risk']}</strong></span>
+            </div>
+          </div>
+        </div>
+
+        <div className="reports-grid">
+          <div className="panel chart-panel">
+            <div className="panel-head">
+              <h2>Engagement trend <span style={{ fontSize: '0.7rem', color: 'var(--ink-soft)', fontWeight: 400 }}>(illustrative)</span></h2>
+            </div>
+            <div className="panel-body">
+              <p className="chart-note">The source dataset is a single end-of-semester snapshot, not weekly records — this chart shows the shape a real trend view would take once attendance/engagement tracking is wired in.</p>
+              <TrendChart />
+            </div>
+          </div>
+
+          <div className="panel chart-panel">
+            <div className="panel-head"><h2>Cohort risk drivers</h2></div>
+            <div className="panel-body">
+              <p className="chart-note">Global feature importance from the trained Decision Tree (model.feature_importances_) — how much each input drove split decisions across the whole model, not a per-student explanation.</p>
+              {importances.map((driver) => (
+                <div className="factor" key={driver.feature}>
+                  <div className="factor-label"><span className="name">{driver.label}</span><span className="weight">{driver.importance.toFixed(2)}</span></div>
+                  <div className="factor-bar"><span style={{ width: `${Math.round((driver.importance / maxImportance) * 100)}%` }}></span></div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
         <div className="panel chart-panel">
-          <div className="panel-head"><h2>Cohort risk drivers</h2></div>
-          <div className="panel-body">
-            <p className="chart-note">Feature importance from the dropout-risk model, averaged across the cohort.</p>
-            {[
-              ['1st sem. units approved', '0.31', 31],
-              ['Admission grade', '0.24', 24],
-              ['Attendance rate', '0.19', 19],
-              ['Tuition fees up to date', '0.14', 14],
-              ['Scholarship holder', '0.08', 8],
-            ].map(([name, weight, pct]) => (
-              <div className="factor" key={name}>
-                <div className="factor-label"><span className="name">{name}</span><span className="weight">{weight}</span></div>
-                <div className="factor-bar"><span style={{ width: `${pct}%` }}></span></div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="panel chart-panel">
-        <div className="panel-head"><h2>By course</h2></div>
-        <table className="course-table">
-          <thead>
-            <tr>
-              <th>Course</th>
-              <th>Students</th>
-              <th>Avg. completion</th>
-              <th>Avg. grade (0–20)</th>
-              <th>At risk</th>
-            </tr>
-          </thead>
-          <tbody>
-            {COURSE_ROWS.map(([course, students, completion, grade, atRisk]) => (
-              <tr key={course}>
-                <td>{course}</td>
-                <td>{students}</td>
-                <td>{completion}</td>
-                <td>{grade}</td>
-                <td><span className={`rag-pill ${atRisk ? 'red' : 'green'}`}><span className="dot"></span>{atRisk}</span></td>
+          <div className="panel-head"><h2>By course</h2></div>
+          <table className="course-table">
+            <thead>
+              <tr>
+                <th>Course</th>
+                <th>Students</th>
+                <th>Avg. completion</th>
+                <th>Avg. grade (0–20)</th>
+                <th>At risk</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {courseRows.map(([course, count, completion, grade, atRisk]) => (
+                <tr key={course}>
+                  <td>{course}</td>
+                  <td>{count}</td>
+                  <td>{completion}</td>
+                  <td>{grade}</td>
+                  <td><span className={`rag-pill ${atRisk ? 'red' : 'green'}`}><span className="dot"></span>{atRisk}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </>}
     </AppShell>
   );
 }

@@ -15,8 +15,10 @@ Produces:
 """
 
 import csv
+import json
 import random
 from werkzeug.security import generate_password_hash
+from ml.model import validate_input, predict_risk, FIELD_TO_FEATURE
 
 random.seed(42)  # reproducible sample
 
@@ -74,8 +76,25 @@ def load_rows():
         return list(reader)
 
 
-def risk_from_target(target):
-    return {"Dropout": "At risk", "Enrolled": "Watch", "Graduate": "On track"}.get(target, "Not assessed")
+def dropout_probability_str(prediction):
+    """Matches app.py's dropout_probability_str — dropout_risk now holds the
+    numeric Dropout-class probability, not a status label (see FINAL FIX
+    PROMPT item 1); risk_prediction is the label column going forward."""
+    return f"{prediction['probabilities']['Dropout']:.4f}"
+
+
+def model_inputs_and_prediction(row):
+    """
+    Runs this row's real 36 raw dataset columns through the actual trained
+    model (same validate_input/predict_risk the live /api/predict endpoint
+    uses) so seeded students carry a genuine model prediction rather than
+    the dataset's ground-truth Target column relabeled as if it were one.
+    Returns (cleaned_inputs, prediction_result).
+    """
+    raw_inputs = {field: row[feature] for field, feature in FIELD_TO_FEATURE.items()}
+    cleaned = validate_input(raw_inputs)
+    result = predict_risk(cleaned)
+    return cleaned, result
 
 
 def build():
@@ -125,7 +144,11 @@ def build():
         scholarship = 1 if row["Scholarship holder"] == "1" else 0
         debtor = 1 if row["Debtor"] == "1" else 0
         tuition_ok = 1 if row["Tuition fees up to date"] == "1" else 0
-        dropout_risk = risk_from_target(row["Target"])
+
+        # Real model prediction from this row's 36 raw feature columns —
+        # not the dataset's ground-truth Target (see docstring above).
+        cleaned_inputs, prediction = model_inputs_and_prediction(row)
+        dropout_risk = dropout_probability_str(prediction)
 
         username = roll_no.lower()
         default_password = roll_no  # demo only — force change in a real deployment
@@ -134,10 +157,12 @@ def build():
         lines.append(
             "INSERT INTO students (name, roll_no, course, admission_grade, attendance_percentage, "
             "gpa, units_1st_sem_enrolled, units_1st_sem_approved, units_2nd_sem_enrolled, "
-            "units_2nd_sem_approved, scholarship_holder, debtor, tuition_up_to_date, dropout_risk) VALUES ("
+            "units_2nd_sem_approved, scholarship_holder, debtor, tuition_up_to_date, dropout_risk, "
+            "risk_prediction, risk_confidence, risk_probabilities, prediction_inputs, risk_analyzed_at) VALUES ("
             f"{esc(name)}, {esc(roll_no)}, {esc(course)}, {admission_grade}, {attendance}, {gpa_10}, "
             f"{enrolled1}, {approved1}, {enrolled2}, {approved2}, {scholarship}, {debtor}, {tuition_ok}, "
-            f"{esc(dropout_risk)});\n"
+            f"{esc(dropout_risk)}, {esc(prediction['prediction'])}, {prediction['confidence']}, "
+            f"{esc(json.dumps(prediction['probabilities']))}, {esc(json.dumps(cleaned_inputs))}, NOW());\n"
         )
         lines.append(
             f"INSERT INTO users (username, password_hash, role, student_id) VALUES "

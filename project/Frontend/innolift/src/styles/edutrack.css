@@ -724,15 +724,11 @@ textarea.note-input:focus { outline: none; border-color: var(--brand); }
     }
     .sidebar-nav.open { display: flex; }
     .sidebar-foot { display: none; }
-    .sidebar-toggle {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        gap: 4px;
-        width: 32px; height: 32px;
-        background: none; border: none; cursor: pointer;
-    }
-    .sidebar-toggle span { display: block; height: 2px; background: #C7CDDA; border-radius: 2px; }
+    /* The sidebar's own hamburger duplicated the header's .collapse-toggle
+       in compact/mobile view (two menu icons stacked). The header toggle
+       now drives the mobile nav open/closed too (see AppShell.jsx), so
+       this second control is hidden rather than removed from the DOM. */
+    .sidebar-toggle { display: none; }
     .main { padding: 1.5rem; }
     .stat-strip { grid-template-columns: repeat(2, 1fr); }
     table { display: block; overflow-x: auto; }

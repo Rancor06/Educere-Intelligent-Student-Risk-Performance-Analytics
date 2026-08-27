@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import AppShell from '../layout/AppShell';
 import PanelLoader from '../components/PanelLoader';
 import { API_BASE } from '../apiBase';
+import { statusRaw } from '../riskLabel';
 
 const riskClass = { Dropout: 'red', Enrolled: 'amber', Graduate: 'green', 'At risk': 'red', Watch: 'amber', 'On track': 'green' };
 const riskLabel = { Dropout: 'At risk', Enrolled: 'Watch', Graduate: 'On track' };
@@ -29,7 +30,7 @@ export default function DashboardPage() {
   const counts = useMemo(() => {
     const tally = { green: 0, amber: 0, red: 0 };
     students.forEach((student) => {
-      const raw = student.risk_prediction || student.dropout_risk;
+      const raw = statusRaw(student);
       const normalized = riskLabel[raw] || raw;
       if (normalized === 'On track') tally.green += 1;
       else if (normalized === 'Watch') tally.amber += 1;
@@ -41,7 +42,7 @@ export default function DashboardPage() {
     const rank = { 'At risk': 0, Watch: 1 };
     return students
       .map((student) => {
-        const raw = student.risk_prediction || student.dropout_risk;
+        const raw = statusRaw(student);
         return { student, normalized: riskLabel[raw] || raw };
       })
       .filter(({ normalized }) => normalized === 'At risk' || normalized === 'Watch')
@@ -56,7 +57,7 @@ export default function DashboardPage() {
     <div className="stat-strip"><div className="stat-card"><div className="label">Total students</div><div className="value">{students.length}</div></div><div className="stat-card rag-green"><div className="label"><span className="dot" />On track</div><div className="value">{counts.green}</div></div><div className="stat-card rag-amber"><div className="label"><span className="dot" />Watch</div><div className="value">{counts.amber}</div></div><div className="stat-card rag-red"><div className="label"><span className="dot" />At risk</div><div className="value">{counts.red}</div></div></div>
     {loading ? <PanelLoader label="Loading your student intelligence…" /> : <>
       <div className="overview-grid">
-        <div className="panel"><div className="panel-head"><h2>Needs attention</h2><Link to="/students" className="row-link">View all students →</Link></div><div className="alert-list">{attention.length ? attention.map((student) => { const risk = student.risk_prediction || student.dropout_risk || 'Prediction Pending'; return <div className="alert-item" key={student.id}><div className="student-avatar">{initials(student.name)}</div><div className="alert-info"><div className="student-name">{student.name}</div><div className="why">{student.roll_no} · {student.course || 'No course recorded'}</div></div><span className={`rag-pill ${riskClass[risk] || 'grey'}`}><span className="dot" />{riskLabel[risk] || risk}</span><Link to={`/student-detail?id=${student.id}`} className="row-link">View →</Link></div>; }) : <p className="chart-note" style={{ padding: '1.2rem' }}>No students need attention right now.</p>}</div></div>
+        <div className="panel"><div className="panel-head"><h2>Needs attention</h2><Link to="/students" className="row-link">View all students →</Link></div><div className="alert-list">{attention.length ? attention.map((student) => { const risk = statusRaw(student); return <div className="alert-item" key={student.id}><div className="student-avatar">{initials(student.name)}</div><div className="alert-info"><div className="student-name">{student.name}</div><div className="why">{student.roll_no} · {student.course || 'No course recorded'}</div></div><span className={`rag-pill ${riskClass[risk] || 'grey'}`}><span className="dot" />{riskLabel[risk] || risk}</span><Link to={`/student-detail?id=${student.id}`} className="row-link">View →</Link></div>; }) : <p className="chart-note" style={{ padding: '1.2rem' }}>No students need attention right now.</p>}</div></div>
         <div className="quick-links">
           <Link to="/students" className="quick-link"><div className="ql-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /></svg></div><div className="ql-body"><div className="ql-title">Student Directory</div><div className="ql-sub">Manage students and view profiles</div></div><span className="ql-arrow">→</span></Link>
           <Link to="/predictor" className="quick-link"><div className="ql-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 8v4l3 3" /></svg></div><div className="ql-body"><div className="ql-title">Risk Predictor</div><div className="ql-sub">Run a one-off prediction</div></div><span className="ql-arrow">→</span></Link>

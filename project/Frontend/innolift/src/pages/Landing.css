@@ -11,7 +11,7 @@
 .landing .navbar {
   display:flex; align-items:center; justify-content:space-between;
   padding: 20px 48px;
-  background: #fff;
+  background: var(--paper-raised);
   border-bottom: 1px solid var(--line);
   position: sticky; top: 0; z-index: 50;
 }
@@ -35,7 +35,7 @@
 .landing .signin-btn svg { width:16px; height:16px; }
 .landing .login-menu {
   position:absolute; right:0; top:calc(100% + 10px); min-width:190px;
-  background:#fff; border:1px solid var(--line); border-radius: var(--radius-md);
+  background: var(--paper-raised); border:1px solid var(--line); border-radius: var(--radius-md);
   box-shadow: var(--shadow); overflow:hidden; display:none; z-index:20;
 }
 .landing .login-menu.open { display:block; }
@@ -66,7 +66,7 @@
 .landing .btn-mock { display:inline-flex; align-items:center; gap:9px; padding:14px 24px; border-radius:12px; font-size:15px; font-weight:600; border:1.5px solid transparent; font-family: var(--font-body); }
 .landing .btn-mock svg { width:18px; height:18px; }
 .landing .btn-mock-primary { background: linear-gradient(135deg, var(--brand), #6d5aea); color:#fff; box-shadow: 0 12px 24px -8px rgba(91,78,224,.5); }
-.landing .btn-mock-outline { background:#fff; color: var(--brand-dark); border-color:#d8d4f7; }
+.landing .btn-mock-outline { background: var(--paper-raised); color: var(--brand-dark); border-color: var(--line); }
 .landing .btn-mock-outline:hover { background: var(--brand-soft); }
 
 .landing .hero-visual { position:relative; height:520px; }
@@ -87,7 +87,7 @@
 }
 .landing .float-chip {
   position:absolute; top:6px; right:170px; z-index:3;
-  background:#fff; border-radius:16px; padding:10px 16px;
+  background: var(--paper-raised); border-radius:16px; padding:10px 16px;
   box-shadow: var(--shadow-sm); border:1px solid var(--line);
   display:flex; align-items:center; gap:10px;
 }
@@ -97,7 +97,7 @@
 
 .landing .risk-card {
   position:relative; z-index:2;
-  background:#fff; border-radius: var(--radius-lg);
+  background: var(--paper-raised); border-radius: var(--radius-lg);
   box-shadow: var(--shadow); border:1px solid var(--line);
   padding:26px 26px 22px; width:440px; margin-top:60px;
 }
@@ -128,7 +128,7 @@
 
 /* ---------- FEATURE CARDS ---------- */
 .landing .features { max-width:1280px; margin:56px auto 0; padding:0 48px; display:grid; grid-template-columns:repeat(3, 1fr); gap:20px; }
-.landing .feature-card { background:#fff; border:1px solid var(--line); border-radius: var(--radius-md); padding:26px; position:relative; transition: box-shadow .2s, transform .2s; }
+.landing .feature-card { background: var(--paper-raised); border:1px solid var(--line); border-radius: var(--radius-md); padding:26px; position:relative; transition: box-shadow .2s, transform .2s; }
 .landing .feature-card:hover { box-shadow: var(--shadow-sm); transform:translateY(-2px); }
 .landing .feature-ic { width:46px; height:46px; border-radius:13px; display:flex; align-items:center; justify-content:center; margin-bottom:16px; }
 .landing .feature-ic.green { background: var(--rag-green-bg); color: var(--rag-green); }
@@ -147,7 +147,7 @@
 
 /* ---------- STATUS BAND ---------- */
 .landing .status-band { max-width:1280px; margin:20px auto 0; padding:0 48px; }
-.landing .status-inner { background:#fff; border:1px solid var(--line); border-radius: var(--radius-lg); padding:38px 44px; display:grid; grid-template-columns:260px 1fr; gap:40px; align-items:center; }
+.landing .status-inner { background: var(--paper-raised); border:1px solid var(--line); border-radius: var(--radius-lg); padding:38px 44px; display:grid; grid-template-columns:260px 1fr; gap:40px; align-items:center; }
 .landing .status-visual { position:relative; width:180px; height:180px; margin:0 auto; }
 .landing .status-shield {
   position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);

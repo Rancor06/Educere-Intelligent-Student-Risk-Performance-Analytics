@@ -5,6 +5,7 @@ import AppShell from '../layout/AppShell';
 import Toast from '../components/Toast';
 import PanelLoader from '../components/PanelLoader';
 import { API_BASE } from '../apiBase';
+import { statusRaw } from '../riskLabel';
 import { PREDICTION_SECTIONS, PREDICTION_TOGGLES, PredictionField } from '../PredictionForm';
 import './StudentIntelligence.css';
 
@@ -22,8 +23,24 @@ const RISK_STYLE = { 'At risk': 'high', Watch: 'medium', 'On track': 'low' };
 function initials(name = '') { return name.split(/\s+/).filter(Boolean).map((part) => part[0]).slice(0, 2).join('').toUpperCase() || 'ST'; }
 function percent(value) { return value == null ? '—' : `${Math.round(Number(value) * 100)}%`; }
 
+// Risk score = the model's Dropout class probability, NOT model confidence
+// (confidence is how sure the model is in whichever class it picked, which
+// for a confidently-Graduate student is a *high* number that has nothing to
+// do with dropout risk). Same definition used on Student Detail and Reports.
+function parseProbabilities(student) {
+  const raw = student?.risk_probabilities;
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw || '{}') : (raw || {});
+    return parsed || {};
+  } catch { return {}; }
+}
+function dropoutRisk(student) {
+  const probabilities = parseProbabilities(student);
+  return probabilities.Dropout ?? null;
+}
+
 function RiskBadge({ student, result }) {
-  const raw = result?.prediction || student?.risk_prediction || student?.dropout_risk || 'Prediction Pending';
+  const raw = result?.prediction || statusRaw(student);
   const label = RISK_LABEL[raw] || raw;
   return <span className={`intelligence-risk ${RISK_STYLE[label] || 'pending'}`}><span />{label}</span>;
 }
@@ -109,41 +126,76 @@ const MODEL_FIELD_KEYS = [
   ...PREDICTION_TOGGLES.map((toggle) => toggle.key),
 ];
 
-function EditStudent({ student, onClose, onSaved }) {
-  // Directory-added students (e.g. via a quick add without model data) can
-  // have no prediction yet. For those, the edit panel also offers the full
-  // model-input form inline — saving both updates the student and runs the
-  // trained model in one step, so the card picks up a real risk badge
-  // instead of staying on "Prediction Pending".
-  const hasPrediction = Boolean(student.risk_prediction) || Boolean(student.dropout_risk) && student.dropout_risk !== 'Prediction Pending';
+function EditStudent({ student, onClose, onSaved, onRefresh }) {
+  const hasPrediction = statusRaw(student) !== 'Not analysed';
   const savedInputs = useMemo(() => {
     const raw = typeof student.prediction_inputs === 'string' ? JSON.parse(student.prediction_inputs || '{}') : (student.prediction_inputs || {});
     const merged = { ...raw };
     PREDICTION_TOGGLES.forEach(({ key }) => { if (key in merged) merged[key] = Boolean(Number(merged[key])); });
     return merged;
   }, [student]);
+  // The full 36-field model-input section is always shown and always
+  // pre-populated from savedInputs when present — never hidden just
+  // because the student already has a prediction (an admin improving a
+  // struggling student's numbers needs to see and edit the real values,
+  // not re-enter them from scratch).
   const [form, setForm] = useState({ ...blankModel(), ...student, ...savedInputs });
-  const [runAnalysis, setRunAnalysis] = useState(!hasPrediction);
-  const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(''); const [busy, setBusy] = useState('');
+  // Tracks the latest known prediction for this student — starts from
+  // whatever was already saved, and is replaced (not merged) by whatever
+  // Run/Re-run Prediction returns, so the "Current prediction" panel
+  // always reflects the most recent real model output.
+  const [prediction, setPrediction] = useState(() => {
+    if (!hasPrediction) return null;
+    let probabilities;
+    try { probabilities = typeof student.risk_probabilities === 'string' ? JSON.parse(student.risk_probabilities || '{}') : (student.risk_probabilities || {}); } catch { probabilities = {}; }
+    return { prediction: statusRaw(student), confidence: Number(student.risk_confidence), probabilities, analyzedAt: student.risk_analyzed_at };
+  });
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
-  const save = async (event) => {
-    event.preventDefault(); setBusy(true); setError('');
+
+  // Normal field edits — never touches the ML prediction.
+  const saveStudent = async (event) => {
+    event.preventDefault(); setBusy('save'); setError('');
     try {
-      const body = { ...form, name: form.name.trim(), course: form.course.trim() };
-      if (runAnalysis) {
-        body.prediction_input = Object.fromEntries(MODEL_FIELD_KEYS.map((key) => [key, PREDICTION_TOGGLES.some((t) => t.key === key) ? (form[key] ? 1 : 0) : form[key]]));
-      }
+      const body = { name: form.name.trim(), course: form.course.trim(), attendance_percentage: form.attendance_percentage, gpa: form.gpa, admission_grade: form.admission_grade, units_1st_sem_enrolled: form.units_1st_sem_enrolled, units_1st_sem_approved: form.units_1st_sem_approved, units_2nd_sem_enrolled: form.units_2nd_sem_enrolled, units_2nd_sem_approved: form.units_2nd_sem_approved };
       const response = await fetch(`${API_BASE}/admin/students/${student.id}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const responseBody = await response.json().catch(() => ({}));
       if (!response.ok || !responseBody.success) throw new Error(responseBody.error || 'Unable to update student.');
-      onSaved(runAnalysis ? 'Student updated — risk analysis generated.' : 'Student updated.'); onClose();
-    } catch (err) { setError(err.message === 'Failed to fetch' ? 'Unable to reach the server.' : err.message); } finally { setBusy(false); }
+      onSaved('Student updated.'); onClose();
+    } catch (err) { setError(err.message === 'Failed to fetch' ? 'Unable to reach the server.' : err.message); } finally { setBusy(''); }
   };
-  return <div className="modal-overlay open" onClick={(event) => event.target === event.currentTarget && onClose()}><div className="modal-card wizard-card"><button className="modal-close" onClick={onClose}>×</button><h2>Edit student</h2><form onSubmit={save}><div className="wizard-grid"><label>Full name<input required value={form.name || ''} onChange={(event) => set('name', event.target.value)} /></label><label>Course<input value={form.course || ''} onChange={(event) => set('course', event.target.value)} /></label><label>Attendance %<input type="number" min="0" max="100" step="0.1" value={form.attendance_percentage ?? ''} onChange={(event) => set('attendance_percentage', event.target.value)} /></label><label>GPA<input type="number" min="0" max="10" step="0.01" value={form.gpa ?? ''} onChange={(event) => set('gpa', event.target.value)} /></label><label>Admission grade<input type="number" value={form.admission_grade ?? ''} onChange={(event) => set('admission_grade', event.target.value)} /></label><label>1st-semester units enrolled<input type="number" value={form.units_1st_sem_enrolled ?? ''} onChange={(event) => set('units_1st_sem_enrolled', event.target.value)} /></label><label>1st-semester units approved<input type="number" value={form.units_1st_sem_approved ?? ''} onChange={(event) => set('units_1st_sem_approved', event.target.value)} /></label><label>2nd-semester units enrolled<input type="number" value={form.units_2nd_sem_enrolled ?? ''} onChange={(event) => set('units_2nd_sem_enrolled', event.target.value)} /></label><label>2nd-semester units approved<input type="number" value={form.units_2nd_sem_approved ?? ''} onChange={(event) => set('units_2nd_sem_approved', event.target.value)} /></label></div>
 
-    {!hasPrediction && <div className="edit-analysis-toggle"><label><input type="checkbox" checked={runAnalysis} onChange={(event) => setRunAnalysis(event.target.checked)} /> Generate a risk analysis for this student when I save</label></div>}
+  // Explicit action: sends the (possibly just-edited) model inputs to the
+  // real trained model and persists whatever it returns. Never triggered
+  // automatically by opening or saving the form.
+  const runPrediction = async () => {
+    setBusy('predict'); setError('');
+    try {
+      const prediction_input = Object.fromEntries(MODEL_FIELD_KEYS.map((key) => [key, PREDICTION_TOGGLES.some((t) => t.key === key) ? (form[key] ? 1 : 0) : form[key]]));
+      const body = { name: form.name.trim(), course: form.course.trim(), attendance_percentage: form.attendance_percentage, gpa: form.gpa, admission_grade: form.admission_grade, units_1st_sem_enrolled: form.units_1st_sem_enrolled, units_1st_sem_approved: form.units_1st_sem_approved, units_2nd_sem_enrolled: form.units_2nd_sem_enrolled, units_2nd_sem_approved: form.units_2nd_sem_approved, prediction_input };
+      const response = await fetch(`${API_BASE}/admin/students/${student.id}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const responseBody = await response.json().catch(() => ({}));
+      if (!response.ok || !responseBody.success) throw new Error(responseBody.error || 'Unable to run the prediction.');
+      setPrediction({ ...responseBody.risk_analysis, analyzedAt: new Date().toISOString() });
+      onRefresh?.();
+    } catch (err) { setError(err.message === 'Failed to fetch' ? 'Unable to reach the prediction service.' : err.message); } finally { setBusy(''); }
+  };
 
-    {runAnalysis && <fieldset className="wizard-section"><legend>Risk analysis model data</legend>
+  const predictionLabel = prediction ? (RISK_LABEL[prediction.prediction] || prediction.prediction) : null;
+  const dropoutPct = prediction ? percent(prediction.probabilities?.Dropout) : '—';
+
+  return <div className="modal-overlay open" onClick={(event) => event.target === event.currentTarget && onClose()}><div className="modal-card wizard-card"><button className="modal-close" onClick={onClose}>×</button><h2>Edit student</h2>
+
+    {prediction ? <div className="analysis-result" style={{ marginBottom: '1rem' }}>
+      <span className={`intelligence-risk ${RISK_STYLE[predictionLabel] || 'pending'}`}><span />{predictionLabel}</span>
+      <div className="metric-row"><span className="k">Dropout risk</span><span className="v">{dropoutPct}</span></div>
+      <div className="metric-row"><span className="k">Model confidence</span><span className="v">{percent(prediction.confidence)}</span></div>
+      <div className="metric-row"><span className="k">Last analysed</span><span className="v">{prediction.analyzedAt ? new Date(prediction.analyzedAt).toLocaleString() : '—'}</span></div>
+    </div> : <p className="chart-note" style={{ marginBottom: '1rem' }}>No prediction available yet — fill in the model inputs below and run one.</p>}
+
+    <form onSubmit={saveStudent}><div className="wizard-grid"><label>Full name<input required value={form.name || ''} onChange={(event) => set('name', event.target.value)} /></label><label>Course<input value={form.course || ''} onChange={(event) => set('course', event.target.value)} /></label><label>Attendance %<input type="number" min="0" max="100" step="0.1" value={form.attendance_percentage ?? ''} onChange={(event) => set('attendance_percentage', event.target.value)} /></label><label>GPA<input type="number" min="0" max="10" step="0.01" value={form.gpa ?? ''} onChange={(event) => set('gpa', event.target.value)} /></label><label>Admission grade<input type="number" value={form.admission_grade ?? ''} onChange={(event) => set('admission_grade', event.target.value)} /></label><label>1st-semester units enrolled<input type="number" value={form.units_1st_sem_enrolled ?? ''} onChange={(event) => set('units_1st_sem_enrolled', event.target.value)} /></label><label>1st-semester units approved<input type="number" value={form.units_1st_sem_approved ?? ''} onChange={(event) => set('units_1st_sem_approved', event.target.value)} /></label><label>2nd-semester units enrolled<input type="number" value={form.units_2nd_sem_enrolled ?? ''} onChange={(event) => set('units_2nd_sem_enrolled', event.target.value)} /></label><label>2nd-semester units approved<input type="number" value={form.units_2nd_sem_approved ?? ''} onChange={(event) => set('units_2nd_sem_approved', event.target.value)} /></label></div>
+
+    <fieldset className="wizard-section"><legend>Risk analysis model data</legend>
       {PREDICTION_SECTIONS.map((section) => <fieldset className="wizard-section" key={section.title}>
         <legend>{section.title}</legend>
         <div className="wizard-grid">
@@ -155,15 +207,15 @@ function EditStudent({ student, onClose, onSaved }) {
       <div className="wizard-toggles">
         {PREDICTION_TOGGLES.map((toggle) => <label key={toggle.key}><input type="checkbox" checked={form[toggle.key]} onChange={(event) => set(toggle.key, event.target.checked)} />{toggle.label}</label>)}
       </div>
-    </fieldset>}
+    </fieldset>
 
-    {error && <p className="wizard-error">{error}</p>}<div className="modal-actions"><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={busy}>{busy ? (runAnalysis ? 'Saving & analysing…' : 'Saving…') : 'Save changes'}</button></div></form></div></div>;
+    {error && <p className="wizard-error">{error}</p>}<div className="modal-actions"><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button><button type="button" className="btn btn-ghost" disabled={Boolean(busy)} onClick={runPrediction}>{busy === 'predict' ? 'Running…' : (hasPrediction || prediction ? 'Re-run Prediction' : 'Run Prediction')}</button><button className="btn btn-primary" disabled={Boolean(busy)}>{busy === 'save' ? 'Saving…' : 'Save Student'}</button></div></form></div></div>;
 }
 
 // Which normalized RAG label a student currently falls under, for the
 // "All status" filter — same normalization used by RiskBadge above.
 function studentStatus(student) {
-  const raw = student.risk_prediction || student.dropout_risk || 'Prediction Pending';
+  const raw = statusRaw(student);
   return RISK_LABEL[raw] || raw;
 }
 
@@ -185,11 +237,11 @@ export default function StudentIntelligence() {
       return matchesQuery && matchesStatus;
     });
     list = [...list];
-    if (sortBy === 'risk-desc') list.sort((a, b) => (Number(b.risk_confidence) || 0) - (Number(a.risk_confidence) || 0));
-    else if (sortBy === 'risk-asc') list.sort((a, b) => (Number(a.risk_confidence) || 0) - (Number(b.risk_confidence) || 0));
+    if (sortBy === 'risk-desc') list.sort((a, b) => (Number(dropoutRisk(b)) || 0) - (Number(dropoutRisk(a)) || 0));
+    else if (sortBy === 'risk-asc') list.sort((a, b) => (Number(dropoutRisk(a)) || 0) - (Number(dropoutRisk(b)) || 0));
     else if (sortBy === 'name') list.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
     return list;
   }, [students, search, statusFilter, sortBy]);
   const remove = async (student) => { if (!window.confirm(`Delete ${student.name}? This also removes their login account.`)) return; try { const response = await fetch(`${API_BASE}/admin/students/${student.id}`, { method: 'DELETE', credentials: 'include' }); const body = await response.json().catch(() => ({})); if (!response.ok || !body.success) throw new Error(body.error || 'Unable to delete student.'); setToast({ message: 'Student deleted.', isError: false }); load(); } catch (err) { setToast({ message: err.message, isError: true }); } };
-  return <AppShell active="/students"><Toast message={toast.message} isError={toast.isError} onDone={() => setToast({ message: '', isError: false })} />{adding && <StudentWizard onClose={() => setAdding(false)} onSaved={() => { setToast({ message: 'Student and risk analysis saved.', isError: false }); load(); }} />}{editing && <EditStudent student={editing} onClose={() => setEditing(null)} onSaved={(message) => { setToast({ message: message || 'Student updated.', isError: false }); load(); }} />}<div className="topbar"><div><span className="eyebrow">Student intelligence</span><h1>Student Directory</h1><p className="sub">Manage each student and their latest trained-model analysis in one place.</p></div><button className="btn btn-primary" onClick={() => setAdding(true)}>+ Add Student</button></div><div className="directory-tools"><input placeholder="Search by student, ID, or course…" value={search} onChange={(event) => setSearch(event.target.value)} /><div className="dt-filters"><select className="dir-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All status</option><option value="At risk">At risk</option><option value="Watch">Watch</option><option value="On track">On track</option></select><select className="dir-select" value={sortBy} onChange={(event) => setSortBy(event.target.value)}><option value="risk-desc">Sort: Risk (high to low)</option><option value="risk-asc">Sort: Risk (low to high)</option><option value="name">Sort: Name</option></select><span>{filtered.length} students</span></div></div>{loading ? <PanelLoader label="Loading student directory…" /> : error ? <p className="wizard-error">{error}</p> : <div className="intelligence-grid">{filtered.map((student) => <article className="intelligence-card" key={student.id}><div className="card-title"><div className="student-avatar">{initials(student.name)}</div><div><h2>{student.name}</h2><p>{student.roll_no} · {student.course || 'No course'}</p></div><RiskBadge student={student} /></div><div className="student-metrics"><span><small>GPA</small><b>{student.gpa ?? '—'}</b></span><span><small>Attendance</small><b>{student.attendance_percentage == null ? '—' : `${student.attendance_percentage}%`}</b></span><span><small>Risk score</small><b>{percent(student.risk_confidence)}</b></span></div><div className="card-actions"><button onClick={() => navigate(`/student-detail?id=${student.id}`)}>View Profile</button><button onClick={() => setEditing(student)}>Edit</button><button className="danger" onClick={() => remove(student)}>Delete</button></div></article>)}</div>}{!loading && !error && filtered.length === 0 && <div className="empty-directory">No students match this search.</div>}</AppShell>;
+  return <AppShell active="/students"><Toast message={toast.message} isError={toast.isError} onDone={() => setToast({ message: '', isError: false })} />{adding && <StudentWizard onClose={() => setAdding(false)} onSaved={() => { setToast({ message: 'Student and risk analysis saved.', isError: false }); load(); }} />}{editing && <EditStudent student={editing} onClose={() => setEditing(null)} onSaved={(message) => { setToast({ message: message || 'Student updated.', isError: false }); load(); }} onRefresh={() => { setToast({ message: 'Prediction updated.', isError: false }); load(); }} />}<div className="topbar"><div><span className="eyebrow">Student intelligence</span><h1>Student Directory</h1><p className="sub">Manage each student and their latest trained-model analysis in one place.</p></div><button className="btn btn-primary" onClick={() => setAdding(true)}>+ Add Student</button></div><div className="directory-tools"><input placeholder="Search by student, ID, or course…" value={search} onChange={(event) => setSearch(event.target.value)} /><div className="dt-filters"><select className="dir-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All status</option><option value="At risk">At risk</option><option value="Watch">Watch</option><option value="On track">On track</option></select><select className="dir-select" value={sortBy} onChange={(event) => setSortBy(event.target.value)}><option value="risk-desc">Sort: Risk (high to low)</option><option value="risk-asc">Sort: Risk (low to high)</option><option value="name">Sort: Name</option></select><span>{filtered.length} students</span></div></div>{loading ? <PanelLoader label="Loading student directory…" /> : error ? <p className="wizard-error">{error}</p> : <div className="intelligence-grid">{filtered.map((student) => <article className="intelligence-card" key={student.id}><div className="card-title"><div className="student-avatar">{initials(student.name)}</div><div><h2>{student.name}</h2><p>{student.roll_no} · {student.course || 'No course'}</p></div><RiskBadge student={student} /></div><div className="student-metrics"><span><small>GPA</small><b>{student.gpa ?? '—'}</b></span><span><small>Attendance</small><b>{student.attendance_percentage == null ? '—' : `${student.attendance_percentage}%`}</b></span><span><small>Risk score</small><b>{percent(dropoutRisk(student))}</b></span></div><div className="card-actions"><button onClick={() => navigate(`/student-detail?id=${student.id}`)}>View Profile</button><button onClick={() => setEditing(student)}>Edit</button><button className="danger" onClick={() => remove(student)}>Delete</button></div></article>)}</div>}{!loading && !error && filtered.length === 0 && <div className="empty-directory">No students match this search.</div>}</AppShell>;
 }

@@ -184,6 +184,42 @@ def validate_input(data):
     return cleaned
 
 
+# Human-readable labels for FEATURE_ORDER entries, for display only (e.g.
+# global feature importance) — never used for prediction input/output.
+FEATURE_LABELS = {feature: feature.strip() for feature in FEATURE_ORDER}
+FEATURE_LABELS["Nacionality"] = "Nationality"
+FEATURE_LABELS["Daytime/evening attendance\t"] = "Daytime/evening attendance"
+
+
+def get_feature_importances(top_n=None):
+    """
+    Returns the trained model's global `feature_importances_`, sorted
+    descending, as a list of {"feature": <FEATURE_ORDER name>,
+    "label": <display name>, "importance": float}.
+
+    This is a cohort-wide (global) measure of how much each input
+    contributed to the model's split decisions across all of training —
+    NOT a per-student explanation. Callers must label it accordingly
+    (e.g. "Global feature importance") rather than presenting it as
+    "why this student was flagged".
+    """
+    model = _load_model()
+    importances = getattr(model, "feature_importances_", None)
+    if importances is None:
+        return []
+    ranked = sorted(
+        zip(FEATURE_ORDER, importances),
+        key=lambda pair: pair[1],
+        reverse=True,
+    )
+    if top_n:
+        ranked = ranked[:top_n]
+    return [
+        {"feature": feature, "label": FEATURE_LABELS.get(feature, feature), "importance": round(float(value), 4)}
+        for feature, value in ranked
+    ]
+
+
 def predict_risk(cleaned_input: dict):
     """
     Args:

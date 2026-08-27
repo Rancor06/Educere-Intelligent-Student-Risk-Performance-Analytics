@@ -136,7 +136,7 @@ function SettingsPage() {
       <div className="panel settings-section">
         <div className="panel-head"><h2>Risk thresholds</h2></div>
         <div className="panel-body" style={{ paddingTop: '0.4rem' }}>
-          <p className="chart-note">Attendance below which a student is flagged. Grade and model-confidence thresholds are set by the ML team and shown here read-only for now.</p>
+          <p className="chart-note">These are local display preferences only — where the coloured Watch/At risk badges kick in on this screen. They don't retrain or reconfigure the trained Decision Tree model in any way; the model's actual prediction and dropout-risk probability are unaffected by this slider.</p>
           <div className="threshold-row">
             <div className="t-label"><span>"Watch" attendance threshold</span><span className="val">{watchThreshold}%</span></div>
             <input type="range" min="50" max="95" value={watchThreshold} onChange={(e) => setWatchThreshold(e.target.value)} />

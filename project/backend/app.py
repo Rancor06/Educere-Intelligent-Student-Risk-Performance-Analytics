@@ -7,24 +7,57 @@ from flask_cors import CORS
 from werkzeug.security import check_password_hash
 from mysql.connector import Error
 from db import get_connection
-from ml_predictor import predict_dropout_risk
 from ml.model import (
     predict_risk as run_dropout_prediction,
     validate_input as validate_prediction_input,
+    get_feature_importances,
     InvalidPredictionInput,
     REQUIRED_FIELDS as PREDICTION_FIELDS,
 )
 
 app = Flask(__name__)
 
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-key")
+# Shared "is this a local development run" signal — same convention the
+# bottom of this file already uses for Flask's debug reloader (FLASK_DEBUG
+# defaults to "1"/on for local dev; set FLASK_DEBUG=0 for any non-dev run,
+# including the actual gunicorn/Render deployment). Reused below so a
+# missing FLASK_SECRET_KEY or CORS_ALLOWED_ORIGINS fails loudly outside
+# local dev instead of silently falling back to an insecure default.
+_is_dev = os.getenv("FLASK_DEBUG", "1") == "1"
+
+_secret_key = os.getenv("FLASK_SECRET_KEY")
+if not _secret_key:
+    if _is_dev:
+        _secret_key = "dev-secret-key"  # local development only
+    else:
+        raise RuntimeError(
+            "FLASK_SECRET_KEY must be set in the environment for any non-local run "
+            "(FLASK_DEBUG=0). Refusing to start with a predictable fallback secret — "
+            "set FLASK_SECRET_KEY in the deployment environment (see .env.example)."
+        )
+app.secret_key = _secret_key
 
 app.config.update(
     SESSION_COOKIE_SAMESITE="None",
     SESSION_COOKIE_SECURE=True,
 )
 
-CORS(app, supports_credentials=True)
+# Comma-separated list of allowed frontend origins, e.g.
+#   CORS_ALLOWED_ORIGINS=https://educere.vercel.app,http://localhost:5173
+# Required outside local dev — an unset value would otherwise silently
+# allow any origin to make credentialed requests to this API.
+_cors_origins_env = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
+_cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+if not _cors_origins:
+    if _is_dev:
+        _cors_origins = "*"  # local development only
+    else:
+        raise RuntimeError(
+            "CORS_ALLOWED_ORIGINS must be set in the environment for any non-local run "
+            "(FLASK_DEBUG=0). Refusing to start with an unrestricted '*' CORS origin — "
+            "set CORS_ALLOWED_ORIGINS to the deployed frontend URL(s) (see .env.example)."
+        )
+CORS(app, supports_credentials=True, origins=_cors_origins)
 
 
 # ---------- Auth helpers ----------
@@ -285,6 +318,21 @@ def get_student(student_id):
     return jsonify(student)
 
 
+def dropout_probability_str(prediction_result):
+    """
+    The `dropout_risk` column historically held a human-readable label
+    (see schema.sql's DEFAULT 'Prediction Pending' and the legacy
+    full_setup.sql demo rows). Every prediction-persisting code path below
+    now writes the actual numeric Dropout-class probability there instead
+    — formatted as a fixed-precision string so it fits the column's
+    existing VARCHAR(20) type without a schema change. risk_prediction is
+    the place for the human-readable label going forward; the frontend's
+    statusRaw() helper knows to treat a numeric-looking dropout_risk as
+    "no legacy label" rather than displaying it as one.
+    """
+    return f"{prediction_result['probabilities']['Dropout']:.4f}"
+
+
 @app.route("/admin/students", methods=["POST"])
 @admin_required
 def admin_create_student():
@@ -325,7 +373,7 @@ def admin_create_student():
                 data.get("units_1st_sem_approved"), data.get("units_2nd_sem_enrolled"),
                 data.get("units_2nd_sem_approved"), data.get("scholarship_holder", 0),
                 data.get("debtor", 0), data.get("tuition_up_to_date", 1),
-                prediction["prediction"], prediction["prediction"], prediction["confidence"],
+                dropout_probability_str(prediction), prediction["prediction"], prediction["confidence"],
                 json.dumps(prediction["probabilities"]), json.dumps(prediction_input),
             )
         )
@@ -397,7 +445,7 @@ def update_student(student_id):
                 data.get("units_1st_sem_enrolled"), data.get("units_1st_sem_approved"),
                 data.get("units_2nd_sem_enrolled"), data.get("units_2nd_sem_approved"),
                 data.get("scholarship_holder"), data.get("debtor"), data.get("tuition_up_to_date"),
-                prediction["prediction"], prediction["prediction"], prediction["confidence"],
+                dropout_probability_str(prediction), prediction["prediction"], prediction["confidence"],
                 json.dumps(prediction["probabilities"]), json.dumps(prediction_input),
                 student_id
             )
@@ -473,11 +521,13 @@ def update_student_notes(student_id):
 @admin_required
 def predict_risk(student_id):
     """
-    Runs the dropout-risk prediction pipeline for one student.
-    The actual ML model is not implemented yet (see ml_predictor.py) —
-    this endpoint does NOT fabricate a prediction from arbitrary
-    thresholds. Until a trained model is wired in, it returns
-    "Prediction Pending" and leaves that reflected in the database.
+    Re-runs the trained dropout model against a student's already-saved
+    model inputs (prediction_inputs) and persists the refreshed result.
+    Used by the "Re-run Prediction" action for a student who already has
+    saved model inputs but no newly-edited ones in the request body —
+    the Student Directory's Edit panel instead sends edited inputs
+    straight to PUT /admin/students/<id> (see update_student above),
+    which validates+predicts+persists them in one step.
     """
     conn = get_connection()
     if not conn:
@@ -512,7 +562,7 @@ def predict_risk(student_id):
         """UPDATE students SET dropout_risk=%s, risk_prediction=%s,
            risk_confidence=%s, risk_probabilities=%s, risk_analyzed_at=NOW()
            WHERE id=%s""",
-        (result["prediction"], result["prediction"], result["confidence"],
+        (dropout_probability_str(result), result["prediction"], result["confidence"],
          json.dumps(result["probabilities"]), student_id),
     )
     conn.commit()
@@ -520,33 +570,6 @@ def predict_risk(student_id):
     cursor.close()
     conn.close()
     return jsonify({"success": True, "student_id": student_id, "risk_analysis": result})
-
-    risk = predict_dropout_risk(student)  # None until the real model is integrated
-
-    if risk is None:
-        update_cursor = conn.cursor()
-        update_cursor.execute(
-            "UPDATE students SET dropout_risk = %s WHERE id = %s",
-            ("Prediction Pending", student_id)
-        )
-        conn.commit()
-        update_cursor.close()
-        cursor.close()
-        conn.close()
-        return jsonify({
-            "success": True,
-            "student_id": student_id,
-            "dropout_risk": "Prediction Pending",
-            "message": "The ML model isn't implemented yet — no prediction is available."
-        })
-
-    update_cursor = conn.cursor()
-    update_cursor.execute("UPDATE students SET dropout_risk = %s WHERE id = %s", (risk, student_id))
-    conn.commit()
-    update_cursor.close()
-    cursor.close()
-    conn.close()
-    return jsonify({"success": True, "student_id": student_id, "dropout_risk": risk})
 
 
 # ---------- Student: own dashboard ----------
@@ -613,6 +636,18 @@ def predict():
         return jsonify({"success": False, "error": f"Prediction failed: {e}"}), 500
 
     return jsonify({"success": True, **result}), 200
+
+
+# ---------- Global feature importance (real model.feature_importances_) ----------
+# Used by the Risk Predictor's "Key contributing factors" panel and the
+# Reports page's cohort risk drivers card, replacing the hardcoded lists
+# that used to live in those components. This is cohort-level (global)
+# importance, not a per-student explanation — see get_feature_importances().
+
+@app.route("/api/model-info", methods=["GET"])
+def model_info():
+    top = request.args.get("top", type=int)
+    return jsonify({"success": True, "feature_importances": get_feature_importances(top or None)})
 
 
 # ---------- Day 45 Task 06: JSON error responses for invalid endpoints/methods ----------

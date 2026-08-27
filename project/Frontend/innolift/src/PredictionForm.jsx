@@ -174,17 +174,17 @@ const STEPS = [
   { num: 4, label: 'Review & predict', sub: 'See inputs and get prediction' },
 ];
 
-// Same cohort-level feature importances shown on the Reports page's
-// "Cohort risk drivers" card — this model doesn't expose a per-prediction
-// breakdown, so the preview panel shows what drives risk across the
-// cohort generally rather than claiming a per-student figure.
-const COHORT_DRIVERS = [
-  { name: 'Attendance rate', pct: 85, level: 'High' },
-  { name: '1st sem. units approved', pct: 80, level: 'High' },
-  { name: 'Admission grade', pct: 55, level: 'Moderate' },
-  { name: 'Tuition fees up to date', pct: 50, level: 'Moderate' },
-  { name: 'Scholarship holder', pct: 20, level: 'Low' },
-];
+// Global feature importance from the real trained model
+// (model.feature_importances_ — see GET /api/model-info), fetched once
+// below. This model doesn't expose a per-prediction breakdown, so the
+// preview panel shows what drives risk across the cohort generally
+// rather than claiming a per-student figure — labeled accordingly.
+function driverLevel(importance, max) {
+  const ratio = max ? importance / max : 0;
+  if (ratio >= 0.6) return 'High';
+  if (ratio >= 0.25) return 'Moderate';
+  return 'Low';
+}
 const DRIVER_COLOR = { High: 'var(--rag-red)', Moderate: 'var(--rag-amber)', Low: 'var(--rag-green)' };
 
 function sectionByTitle(title) {
@@ -197,6 +197,16 @@ function PredictionForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+  const [drivers, setDrivers] = useState([]);
+
+  useEffect(() => {
+    let active = true;
+    fetch(`${API_BASE}/api/model-info?top=5`)
+      .then((res) => (res.ok ? res.json() : { feature_importances: [] }))
+      .then((body) => { if (active) setDrivers(body.feature_importances || []); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
@@ -342,18 +352,22 @@ function PredictionForm() {
               <>
                 <div className={`risk-result ${resultKey}`}>
                   <div className="risk-result-label">{RESULT_HEADLINE[result.prediction] || result.prediction}</div>
-                  <p className="chart-note" style={{ margin: '0.4rem 0 0' }}>Confidence</p>
-                  <div className="risk-result-pct">{Math.round(result.confidence * 100)}%</div>
+                  <p className="chart-note" style={{ margin: '0.4rem 0 0' }}>Dropout risk</p>
+                  <div className="risk-result-pct">{Math.round((result.probabilities?.Dropout ?? 0) * 100)}%</div>
+                  <p className="chart-note" style={{ margin: '0.6rem 0 0' }}>Model confidence: {Math.round(result.confidence * 100)}%</p>
                 </div>
                 <h3 className="pf-subhead" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Key contributing factors <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--ink-faint)' }}>(cohort model)</span>
+                  Key contributing factors <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--ink-faint)' }}>(global feature importance, cohort-wide)</span>
                 </h3>
-                {COHORT_DRIVERS.map((driver) => (
-                  <div className="factor" key={driver.name}>
-                    <div className="factor-label"><span className="name">{driver.name}</span><span className="weight" style={{ color: DRIVER_COLOR[driver.level] }}>{driver.level}</span></div>
-                    <div className="factor-bar"><span style={{ width: `${driver.pct}%`, background: DRIVER_COLOR[driver.level] }}></span></div>
-                  </div>
-                ))}
+                {drivers.map((driver) => {
+                  const level = driverLevel(driver.importance, drivers[0]?.importance);
+                  return (
+                    <div className="factor" key={driver.feature}>
+                      <div className="factor-label"><span className="name">{driver.label}</span><span className="weight" style={{ color: DRIVER_COLOR[level] }}>{level}</span></div>
+                      <div className="factor-bar"><span style={{ width: `${Math.round((driver.importance / (drivers[0]?.importance || 1)) * 100)}%`, background: DRIVER_COLOR[level] }}></span></div>
+                    </div>
+                  );
+                })}
                 <div style={{ display: 'flex', gap: '0.6rem', marginTop: '1rem' }}>
                   <button type="button" className="btn btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => window.print()}>&#8595; Download PDF</button>
                 </div>
