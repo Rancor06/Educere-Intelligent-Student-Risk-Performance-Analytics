@@ -701,7 +701,8 @@ textarea.note-input:focus { outline: none; border-color: var(--brand); }
 }
 
 @media (max-width: 900px) {
-    .app { grid-template-columns: 1fr; }
+    .app,
+    .app.sidebar-collapsed { grid-template-columns: 1fr; }
     .sidebar {
         flex-direction: row;
         align-items: center;
@@ -724,6 +725,14 @@ textarea.note-input:focus { outline: none; border-color: var(--brand); }
     }
     .sidebar-nav.open { display: flex; }
     .sidebar-foot { display: none; }
+    /* Neutralize the desktop-rail "icon only" styling at this width — it's
+       driven by the same `collapsed` state as the grid override above, and
+       must not leak into the compact off-canvas dropdown (see AppShell.jsx).
+       .sidebar-foot itself stays hidden in compact view regardless (see the
+       unconditional rule above) — that's existing, unrelated behavior. */
+    .sidebar-collapsed .sidebar { padding: 1rem 1.2rem; }
+    .sidebar-collapsed .sidebar-nav a span.label { display: inline; }
+    .sidebar-collapsed .sidebar-nav a { justify-content: flex-start; }
     /* The sidebar's own hamburger duplicated the header's .collapse-toggle
        in compact/mobile view (two menu icons stacked). The header toggle
        now drives the mobile nav open/closed too (see AppShell.jsx), so

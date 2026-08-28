@@ -13,7 +13,16 @@ const blankModel = () => Object.fromEntries([
   ...PREDICTION_SECTIONS.flatMap((section) => section.fields.map((field) => [field.key, ''])),
   ...PREDICTION_TOGGLES.map((toggle) => [toggle.key, false]),
 ]);
-const blankStudent = () => ({ name: '', roll_no: '', course: '', attendance_percentage: '', gpa: '', ...blankModel() });
+// The model's "Course" field (a code from the COURSE options list) and the
+// plain-text "Course / department" field represent the same real-world
+// course but in different, non-interchangeable representations — a coded
+// value vs. free text an admin can type for a course outside that fixed
+// list. blankModel() above defines `course` as one of the 36 model keys;
+// StudentWizard/EditStudent keep that model value under `course_code`
+// instead (see PredictionFields and EditStudent below) so it never
+// overwrites the free-text `course` field they also use for the same key —
+// which previously crashed on `.trim()` once a model Course was selected.
+const blankStudent = () => ({ name: '', roll_no: '', course: '', course_code: '', attendance_percentage: '', gpa: '', ...blankModel() });
 // Same two label vocabularies used on the dashboard and the detail page:
 // raw model classes (Dropout/Enrolled/Graduate) and the already-translated
 // demo-seeded labels (At risk/Watch/On track). Normalize to one before styling.
@@ -46,12 +55,16 @@ function RiskBadge({ student, result }) {
 }
 
 function PredictionFields({ form, onChange }) {
+  // See the blankStudent note above — the model's Course field reads/writes
+  // course_code here, not course, to avoid clobbering the free-text field.
+  const fieldValue = (key) => (key === 'course' ? form.course_code : form[key]);
+  const fieldChange = (key, value) => onChange(key === 'course' ? 'course_code' : key, value);
   return <>
     {PREDICTION_SECTIONS.map((section) => <fieldset className="wizard-section" key={section.title}>
       <legend>{section.title}</legend>
       <div className="wizard-grid">
         {section.fields.map((field) => <label key={field.key}>{field.label}
-          <PredictionField field={field} value={form[field.key]} onChange={(value) => onChange(field.key, value)} />
+          <PredictionField field={field} value={fieldValue(field.key)} onChange={(value) => fieldChange(field.key, value)} />
         </label>)}
       </div>
     </fieldset>)}
@@ -68,7 +81,14 @@ function StudentWizard({ onClose, onSaved }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const change = (key, value) => { setForm((current) => ({ ...current, [key]: value })); setError(''); };
-  const modelPayload = () => Object.fromEntries(Object.entries(form).filter(([key]) => !(key === 'name' || key === 'roll_no' || key === 'attendance_percentage' || key === 'gpa')).map(([key, value]) => [key, typeof value === 'boolean' ? (value ? 1 : 0) : value]));
+  // Built from the real 36 model keys rather than filtering `form`, so
+  // `course` (the model's coded field) is read from course_code, not the
+  // free-text course name that shares the object with it — see the
+  // blankStudent note above.
+  const modelPayload = () => Object.fromEntries(MODEL_FIELD_KEYS.map((key) => {
+    const raw = key === 'course' ? form.course_code : form[key];
+    return [key, typeof raw === 'boolean' ? (raw ? 1 : 0) : raw];
+  }));
   const next = () => {
     if (step === 1 && (!form.name.trim() || !form.roll_no.trim() || !form.course.trim())) return setError('Name, student ID, and course are required.');
     setError(''); setStep((value) => Math.min(value + 1, 4));
@@ -139,7 +159,15 @@ function EditStudent({ student, onClose, onSaved, onRefresh }) {
   // because the student already has a prediction (an admin improving a
   // struggling student's numbers needs to see and edit the real values,
   // not re-enter them from scratch).
-  const [form, setForm] = useState({ ...blankModel(), ...student, ...savedInputs });
+  const [form, setForm] = useState(() => ({
+    ...blankModel(), ...student, ...savedInputs,
+    // Explicit last — see the blankStudent note above: keep the free-text
+    // course name and the model's coded course value in separate keys so
+    // neither overwrites the other (this previously crashed Save with
+    // "course.trim is not a function" once a model Course was touched).
+    course: student.course ?? '',
+    course_code: savedInputs.course ?? '',
+  }));
   const [error, setError] = useState(''); const [busy, setBusy] = useState('');
   // Tracks the latest known prediction for this student — starts from
   // whatever was already saved, and is replaced (not merged) by whatever
@@ -171,7 +199,10 @@ function EditStudent({ student, onClose, onSaved, onRefresh }) {
   const runPrediction = async () => {
     setBusy('predict'); setError('');
     try {
-      const prediction_input = Object.fromEntries(MODEL_FIELD_KEYS.map((key) => [key, PREDICTION_TOGGLES.some((t) => t.key === key) ? (form[key] ? 1 : 0) : form[key]]));
+      const prediction_input = Object.fromEntries(MODEL_FIELD_KEYS.map((key) => {
+        const raw = key === 'course' ? form.course_code : form[key];
+        return [key, PREDICTION_TOGGLES.some((t) => t.key === key) ? (raw ? 1 : 0) : raw];
+      }));
       const body = { name: form.name.trim(), course: form.course.trim(), attendance_percentage: form.attendance_percentage, gpa: form.gpa, admission_grade: form.admission_grade, units_1st_sem_enrolled: form.units_1st_sem_enrolled, units_1st_sem_approved: form.units_1st_sem_approved, units_2nd_sem_enrolled: form.units_2nd_sem_enrolled, units_2nd_sem_approved: form.units_2nd_sem_approved, prediction_input };
       const response = await fetch(`${API_BASE}/admin/students/${student.id}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const responseBody = await response.json().catch(() => ({}));
@@ -200,7 +231,7 @@ function EditStudent({ student, onClose, onSaved, onRefresh }) {
         <legend>{section.title}</legend>
         <div className="wizard-grid">
           {section.fields.map((field) => <label key={field.key}>{field.label}
-            <PredictionField field={field} value={form[field.key]} onChange={(value) => set(field.key, value)} />
+            <PredictionField field={field} value={field.key === 'course' ? form.course_code : form[field.key]} onChange={(value) => set(field.key === 'course' ? 'course_code' : field.key, value)} />
           </label>)}
         </div>
       </fieldset>)}
