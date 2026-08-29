@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import AppShell from '../layout/AppShell';
 import PanelLoader from '../components/PanelLoader';
 import { API_BASE } from '../apiBase';
@@ -35,26 +35,59 @@ function TrendChart() {
 
 const RISK_LABEL = { Dropout: 'At risk', Enrolled: 'Watch', Graduate: 'On track' };
 
+// These legacy/miscellaneous course labels are intentionally hidden from
+// the cohort's By course breakdown. Student records remain untouched.
+const HIDDEN_COURSES = new Set([
+  'AI & DS',
+  'CSE',
+  'Computer Science',
+  'Social Service (evening)',
+]);
+
 function ReportsPage() {
   const [students, setStudents] = useState([]);
   const [importances, setImportances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    let active = true;
-    Promise.all([
-      fetch(`${API_BASE}/admin/students`, { credentials: 'include' }).then((r) => (r.ok ? r.json() : Promise.reject(new Error('roster')))),
-      fetch(`${API_BASE}/api/model-info?top=5`).then((r) => (r.ok ? r.json() : { feature_importances: [] })),
-    ]).then(([roster, modelInfo]) => {
-      if (!active) return;
+  const loadReportData = useCallback(async (showLoader = false) => {
+    if (showLoader) setLoading(true);
+    try {
+      const [rosterResponse, modelResponse] = await Promise.all([
+        fetch(`${API_BASE}/admin/students`, { credentials: 'include', cache: 'no-store' }),
+        fetch(`${API_BASE}/api/model-info?top=5`, { cache: 'no-store' }),
+      ]);
+      if (!rosterResponse.ok) throw new Error('roster');
+      const roster = await rosterResponse.json();
+      const modelInfo = modelResponse.ok ? await modelResponse.json() : { feature_importances: [] };
       setStudents(Array.isArray(roster) ? roster : []);
-      setImportances(modelInfo.feature_importances || []);
+      setImportances(Array.isArray(modelInfo.feature_importances) ? modelInfo.feature_importances : []);
       setError('');
-    }).catch(() => { if (active) setError('Could not load live cohort data — is the Flask app running and are you logged in as admin?'); })
-      .finally(() => active && setLoading(false));
-    return () => { active = false; };
+    } catch {
+      setError('Could not load live cohort data — is the Flask app running and are you logged in as admin?');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadReportData(true);
+
+    // Refresh whenever the admin returns to this page/window. This keeps the
+    // report tied to the database rather than to a stale in-memory roster.
+    const refresh = () => loadReportData(false);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('educere:students-changed', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('educere:students-changed', refresh);
+    };
+  }, [loadReportData]);
 
   // Real risk distribution — counted from each student's actual saved
   // prediction (risk_prediction), not a static mock split.
@@ -76,6 +109,7 @@ function ReportsPage() {
     const byCourse = new Map();
     students.forEach((student) => {
       const course = student.course || 'No course recorded';
+      if (HIDDEN_COURSES.has(course)) return;
       if (!byCourse.has(course)) byCourse.set(course, []);
       byCourse.get(course).push(student);
     });
@@ -163,7 +197,7 @@ function ReportsPage() {
         </div>
 
         <div className="panel chart-panel">
-          <div className="panel-head"><h2>By course</h2></div>
+          <div className="panel-head"><h2>By course</h2><button className="btn btn-ghost" type="button" onClick={() => loadReportData(false)}>Refresh data</button></div>
           <table className="course-table">
             <thead>
               <tr>

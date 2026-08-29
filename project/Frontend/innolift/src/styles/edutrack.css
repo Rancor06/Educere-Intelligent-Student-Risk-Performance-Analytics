@@ -553,8 +553,11 @@ textarea.note-input {
     border-radius: var(--radius);
     resize: vertical;
     min-height: 80px;
+    background: var(--paper-raised);
     color: var(--ink);
+    caret-color: var(--ink);
 }
+textarea.note-input::placeholder { color: var(--ink-faint); }
 textarea.note-input:focus { outline: none; border-color: var(--brand); }
 
 /* ============================================

@@ -1,16 +1,19 @@
 import time
 import os
 import json
+import secrets
+import string
 from functools import wraps
 from flask import Flask, request, jsonify, session
 from flask_cors import CORS
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 from mysql.connector import Error
 from db import get_connection
 from ml.model import (
     predict_risk as run_dropout_prediction,
     validate_input as validate_prediction_input,
     get_feature_importances,
+    course_name_from_code,
     InvalidPredictionInput,
     REQUIRED_FIELDS as PREDICTION_FIELDS,
 )
@@ -309,13 +312,71 @@ def get_student(student_id):
     if not conn:
         return jsonify({"success": False, "error": "DB connection failed"}), 500
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM students WHERE id = %s", (student_id,))
+    # LEFT JOIN adds the linked login username for the admin detail view
+    # (Part 13) without changing any existing `students` column.
+    cursor.execute(
+        """SELECT s.*, u.username AS login_username
+           FROM students s LEFT JOIN users u ON u.student_id = s.id AND u.role = 'student'
+           WHERE s.id = %s""",
+        (student_id,)
+    )
     student = cursor.fetchone()
     cursor.close()
     conn.close()
     if not student:
         return jsonify({"success": False, "error": "Not found"}), 404
     return jsonify(student)
+
+
+@app.route("/admin/students/<int:student_id>/reset-password", methods=["POST"])
+@admin_required
+def reset_student_password(student_id):
+    """Generates a fresh temporary password for a student's login account,
+    stores only its hash (replacing the old one), and returns the plaintext
+    exactly once. The old password stops working immediately since its hash
+    is overwritten, not just supplemented."""
+    conn = get_connection()
+    if not conn:
+        return jsonify({"success": False, "error": "DB connection failed"}), 500
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id, username FROM users WHERE student_id = %s AND role = 'student'", (student_id,))
+    user = cursor.fetchone()
+    if not user:
+        cursor.close()
+        conn.close()
+        return jsonify({"success": False, "error": "This student has no login account yet"}), 404
+
+    temp_password = generate_temp_password()
+    update_cursor = conn.cursor()
+    update_cursor.execute(
+        "UPDATE users SET password_hash = %s WHERE id = %s",
+        (generate_password_hash(temp_password), user["id"])
+    )
+    conn.commit()
+    update_cursor.close()
+    cursor.close()
+    conn.close()
+    return jsonify({
+        "success": True,
+        "message": "Password reset successfully",
+        "login_username": user["username"],
+        "temporary_password": temp_password
+    })
+
+
+def generate_temp_password(length=12):
+    """
+    Cryptographically secure one-time temporary password (uses `secrets`,
+    not `random`) — for new student accounts and password resets. Never
+    derived from a public identifier like roll_no, and never stored
+    anywhere except returned once in the API response; only its hash is
+    persisted.
+    """
+    alphabet = string.ascii_letters + string.digits
+    while True:
+        pwd = "".join(secrets.choice(alphabet) for _ in range(length))
+        if any(c.isdigit() for c in pwd) and any(c.isalpha() for c in pwd):
+            return pwd
 
 
 def dropout_probability_str(prediction_result):
@@ -336,8 +397,8 @@ def dropout_probability_str(prediction_result):
 @app.route("/admin/students", methods=["POST"])
 @admin_required
 def admin_create_student():
-    """Adds a student record AND a linked login account (default password = roll_no)."""
-    from werkzeug.security import generate_password_hash
+    """Adds a student record AND a linked login account (username = roll_no,
+    a fresh cryptographically random temporary password each time)."""
     data = request.get_json(silent=True) or {}
     missing = [key for key in ("name", "roll_no") if not str(data.get(key, "")).strip()]
     if missing:
@@ -351,6 +412,11 @@ def admin_create_student():
         return jsonify({"success": False, "error": str(e)}), 400
     except Exception as e:
         return jsonify({"success": False, "error": f"Prediction failed: {e}"}), 500
+
+    # The course selected for the analysis becomes the student's one
+    # canonical displayed course name (Change 2) — falls back to whatever
+    # was submitted only if the code isn't one of the known course codes.
+    course = course_name_from_code(prediction_input.get("course")) or data.get("course")
 
     conn = get_connection()
     if not conn:
@@ -367,7 +433,7 @@ def admin_create_student():
                 prediction_inputs, risk_analyzed_at)
                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())""",
             (
-                data["name"], data["roll_no"], data.get("course"),
+                data["name"], data["roll_no"], course,
                 data.get("admission_grade"), data.get("attendance_percentage"),
                 data.get("gpa"), data.get("units_1st_sem_enrolled"),
                 data.get("units_1st_sem_approved"), data.get("units_2nd_sem_enrolled"),
@@ -380,10 +446,11 @@ def admin_create_student():
         new_student_id = cursor.lastrowid
 
         username = data["roll_no"].lower()
-        default_password_hash = generate_password_hash(data["roll_no"])
+        temp_password = generate_temp_password()
+        password_hash = generate_password_hash(temp_password)
         cursor.execute(
             "INSERT INTO users (username, password_hash, role, student_id) VALUES (%s,%s,'student',%s)",
-            (username, default_password_hash, new_student_id)
+            (username, password_hash, new_student_id)
         )
         conn.commit()
     except Exception as e:
@@ -399,7 +466,9 @@ def admin_create_student():
         "message": "Student added successfully",
         "risk_analysis": prediction,
         "login_username": username,
-        "default_password": data["roll_no"]
+        # Returned exactly once — never stored in plaintext anywhere,
+        # including here on any subsequent request.
+        "temporary_password": temp_password
     }), 201
 
 
@@ -429,7 +498,22 @@ def update_student(student_id):
             return jsonify({"success": False, "error": f"Prediction failed: {e}"}), 500
 
     cursor = conn.cursor()
+    # Verify the student exists BEFORE updating — cursor.rowcount alone is
+    # not a valid existence check: MySQL reports 0 rows changed both when
+    # the row doesn't exist AND when it exists but every submitted value
+    # already matches what's stored (e.g. Save Student with no edits).
+    # That previously produced a false "Not found" on an unmodified save.
+    cursor.execute("SELECT id FROM students WHERE id = %s", (student_id,))
+    if not cursor.fetchone():
+        cursor.close()
+        conn.close()
+        return jsonify({"success": False, "error": "Not found"}), 404
+
     if prediction:
+        # The course selected for this analysis becomes the student's one
+        # canonical displayed course name (Change 2) — falls back to
+        # whatever was submitted only if the code isn't a known course.
+        course = course_name_from_code(prediction_input.get("course")) or data.get("course")
         cursor.execute(
             """UPDATE students SET
                  name=%s, course=%s, admission_grade=%s, attendance_percentage=%s, gpa=%s,
@@ -440,7 +524,7 @@ def update_student(student_id):
                  risk_probabilities=%s, prediction_inputs=%s, risk_analyzed_at=NOW()
                WHERE id=%s""",
             (
-                data.get("name"), data.get("course"), data.get("admission_grade"),
+                data.get("name"), course, data.get("admission_grade"),
                 data.get("attendance_percentage"), data.get("gpa"),
                 data.get("units_1st_sem_enrolled"), data.get("units_1st_sem_approved"),
                 data.get("units_2nd_sem_enrolled"), data.get("units_2nd_sem_approved"),
@@ -468,14 +552,19 @@ def update_student(student_id):
             )
         )
     conn.commit()
-    updated = cursor.rowcount
     cursor.close()
     conn.close()
-    if not updated:
-        return jsonify({"success": False, "error": "Not found"}), 404
+    # The existence check above already ran, so getting here always means
+    # the student exists — 200 regardless of whether any value actually
+    # changed (see the comment above).
     response = {"success": True, "message": "Student updated successfully"}
     if prediction:
         response["risk_analysis"] = prediction
+        # Lets the frontend sync its own form.course to the canonical value
+        # that was just persisted, instead of re-deriving/guessing it —
+        # fixes Save Student (which doesn't send prediction_input) reverting
+        # the course back to whatever the form's stale course field held.
+        response["course"] = course
     return jsonify(response)
 
 
@@ -504,16 +593,21 @@ def update_student_notes(student_id):
     if not conn:
         return jsonify({"success": False, "error": "DB connection failed"}), 500
     cursor = conn.cursor()
+    # Same existence-check fix as update_student() above — rowcount == 0
+    # also happens when the submitted note text already matches what's
+    # stored, which isn't a "not found" case.
+    cursor.execute("SELECT id FROM students WHERE id = %s", (student_id,))
+    if not cursor.fetchone():
+        cursor.close()
+        conn.close()
+        return jsonify({"success": False, "error": "Not found"}), 404
     cursor.execute(
         "UPDATE students SET notes = %s WHERE id = %s",
         (data.get("notes", ""), student_id)
     )
     conn.commit()
-    updated = cursor.rowcount
     cursor.close()
     conn.close()
-    if not updated:
-        return jsonify({"success": False, "error": "Not found"}), 404
     return jsonify({"success": True, "message": "Note saved"})
 
 
@@ -582,9 +676,10 @@ def student_dashboard():
         return jsonify({"success": False, "error": "DB connection failed"}), 500
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        """SELECT name, roll_no, course, attendance_percentage, gpa,
+        """SELECT name, roll_no, course, admission_grade, attendance_percentage, gpa,
                   units_1st_sem_enrolled, units_1st_sem_approved,
-                  units_2nd_sem_enrolled, units_2nd_sem_approved
+                  units_2nd_sem_enrolled, units_2nd_sem_approved,
+                  risk_prediction, risk_analyzed_at, notes
            FROM students WHERE id = %s""",
         (session["student_id"],)
     )
@@ -593,7 +688,10 @@ def student_dashboard():
     conn.close()
     if not student:
         return jsonify({"success": False, "error": "Student record not found"}), 404
-    # dropout_risk intentionally excluded — admin-only info
+    # dropout_risk (the numeric probability), risk_confidence and
+    # risk_probabilities intentionally excluded — admin-only info.
+    # risk_prediction (the plain label — "Graduate"/"Watch"/"At risk" once
+    # mapped by the frontend) is student-facing status, not a detailed score.
     return jsonify(student)
 
 

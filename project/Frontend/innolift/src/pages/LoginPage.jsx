@@ -75,8 +75,8 @@ function LoginPage() {
             <p className="sub">{roleSub}</p>
 
             <div className="role-toggle">
-              <button type="button" className={role === 'student' ? 'active' : ''} onClick={() => setRole('student')}>Student</button>
               <button type="button" className={role === 'admin' ? 'active' : ''} onClick={() => setRole('admin')}>Admin</button>
+              <button type="button" className={role === 'student' ? 'active' : ''} onClick={() => setRole('student')}>Student</button>
             </div>
 
             {error && <div className="login-error show">{error}</div>}

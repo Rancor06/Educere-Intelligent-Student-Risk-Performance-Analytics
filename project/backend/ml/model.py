@@ -190,6 +190,45 @@ FEATURE_LABELS = {feature: feature.strip() for feature in FEATURE_ORDER}
 FEATURE_LABELS["Nacionality"] = "Nationality"
 FEATURE_LABELS["Daytime/evening attendance\t"] = "Daytime/evening attendance"
 
+# Course code -> human-readable name, matching the dropdown options the
+# frontend's PredictionForm.jsx/datasetCodes.js COURSE list already shows
+# an admin when picking a course for the risk-analysis model data. This is
+# the single source of truth app.py uses to keep a student's displayed
+# `course` in sync with whatever course code was actually used for their
+# latest prediction (see course_name_from_code below).
+COURSE_NAMES = {
+    33: "Biofuel Production Technologies",
+    171: "Animation and Multimedia Design",
+    8014: "Social Service (evening attendance)",
+    9003: "Agronomy",
+    9070: "Communication Design",
+    9085: "Veterinary Nursing",
+    9119: "Informatics Engineering",
+    9130: "Equinculture",
+    9147: "Management",
+    9238: "Social Service",
+    9254: "Tourism",
+    9500: "Nursing",
+    9556: "Oral Hygiene",
+    9670: "Advertising and Marketing Management",
+    9773: "Journalism and Communication",
+    9853: "Basic Education",
+    9991: "Management (evening attendance)",
+}
+
+
+def course_name_from_code(course_code):
+    """Human-readable course name for a validated numeric course code, or
+    None if it's not one of the known codes (e.g. a value outside the
+    dropdown's list) — callers should fall back to leaving the existing
+    course name untouched in that case rather than overwriting it with
+    something meaningless."""
+    try:
+        return COURSE_NAMES.get(int(round(float(course_code))))
+    except (TypeError, ValueError):
+        return None
+
+
 
 def get_feature_importances(top_n=None):
     """

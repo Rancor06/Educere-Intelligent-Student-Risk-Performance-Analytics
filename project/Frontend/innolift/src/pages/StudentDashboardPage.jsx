@@ -86,6 +86,7 @@ function StudentDashboardPage() {
               { label: 'Attendance', value: `${data.attendance_percentage ?? '—'}%` },
               { label: 'GPA', value: data.gpa ?? '—' },
               { label: 'Course', value: data.course || '—' },
+              { label: 'Admission grade', value: data.admission_grade ?? '—' },
             ].map((s) => (
               <div className="stat-card" key={s.label}>
                 <div className="label">{s.label}</div>
@@ -111,6 +112,19 @@ function StudentDashboardPage() {
               <div style={{ background: 'var(--paper)', borderRadius: '6px', height: '10px', overflow: 'hidden' }}>
                 <div style={{ height: '100%', background: 'var(--rag-green)', width: `${sem2pct}%` }}></div>
               </div>
+            </div>
+          </div>
+
+          <div className="panel" style={{ marginTop: '1.5rem' }}>
+            <div className="panel-head"><h2>Teacher Notes</h2></div>
+            <div style={{ padding: '1.2rem 1.4rem' }}>
+              {data && data.notes ? (
+                <div style={{ background: 'var(--paper-raised)', border: '1px solid var(--line)', borderRadius: 'var(--radius)', padding: '1rem 1.1rem', color: 'var(--ink)', fontSize: '0.92rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                  {data.notes}
+                </div>
+              ) : (
+                <p className="chart-note">No teacher notes yet.</p>
+              )}
             </div>
           </div>
 

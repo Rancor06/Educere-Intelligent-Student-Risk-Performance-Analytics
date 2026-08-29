@@ -80,6 +80,7 @@ function StudentWizard({ onClose, onSaved }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [credentials, setCredentials] = useState(null);
   const change = (key, value) => { setForm((current) => ({ ...current, [key]: value })); setError(''); };
   // Built from the real 36 model keys rather than filtering `form`, so
   // `course` (the model's coded field) is read from course_code, not the
@@ -119,10 +120,24 @@ function StudentWizard({ onClose, onSaved }) {
       const response = await fetch(`${API_BASE}/admin/students`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || !body.success) throw new Error(body.error || 'Unable to save the student.');
-      onSaved(); onClose();
+      // Shown once — the temporary password isn't retrievable after this,
+      // since only its hash is stored. Directory list refreshes now
+      // (onSaved), but the modal stays open on a credentials step so the
+      // admin can actually see/copy it before closing.
+      window.dispatchEvent(new Event('educere:students-changed'));
+      onSaved();
+      setCredentials({ username: body.login_username, password: body.temporary_password });
     } catch (err) { setError(err.message === 'Failed to fetch' ? 'Unable to reach the server. Check that the backend is running.' : err.message); }
     finally { setBusy(false); }
   };
+  if (credentials) {
+    return <div className="modal-overlay open"><div className="modal-card wizard-card">
+      <h2>Student account created</h2>
+      <p className="chart-note">Save this password now — it can't be shown again. Share it with the student through a secure channel.</p>
+      <div className="analysis-result"><div className="metric-row"><span className="k">Username</span><span className="v">{credentials.username}</span></div><div className="metric-row"><span className="k">Temporary password</span><span className="v">{credentials.password}</span></div></div>
+      <div className="modal-actions"><button className="btn btn-primary" onClick={onClose}>Done</button></div>
+    </div></div>;
+  }
   return <div className="modal-overlay open" onClick={(e) => e.target === e.currentTarget && onClose()}><div className="modal-card wizard-card">
     <button className="modal-close" onClick={onClose} aria-label="Close">×</button><div className="wizard-head"><span>New student</span><h2>Add student with risk analysis</h2><p>Student details and the trained model result are saved together.</p></div>
     <div className="wizard-steps">{['Student', 'Model data', 'Analysis', 'Review'].map((label, index) => <span className={step >= index + 1 ? 'done' : ''} key={label}><b>{index + 1}</b>{label}</span>)}</div>
@@ -189,6 +204,7 @@ function EditStudent({ student, onClose, onSaved, onRefresh }) {
       const response = await fetch(`${API_BASE}/admin/students/${student.id}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const responseBody = await response.json().catch(() => ({}));
       if (!response.ok || !responseBody.success) throw new Error(responseBody.error || 'Unable to update student.');
+      window.dispatchEvent(new Event('educere:students-changed'));
       onSaved('Student updated.'); onClose();
     } catch (err) { setError(err.message === 'Failed to fetch' ? 'Unable to reach the server.' : err.message); } finally { setBusy(''); }
   };
@@ -208,6 +224,14 @@ function EditStudent({ student, onClose, onSaved, onRefresh }) {
       const responseBody = await response.json().catch(() => ({}));
       if (!response.ok || !responseBody.success) throw new Error(responseBody.error || 'Unable to run the prediction.');
       setPrediction({ ...responseBody.risk_analysis, analyzedAt: new Date().toISOString() });
+      // The backend just resolved course_code -> the canonical course name
+      // and persisted it (see course_name_from_code in ml/model.py). Sync
+      // form.course to that same value now — otherwise a later Save
+      // Student (which doesn't send prediction_input) would overwrite the
+      // just-synced course with this form's stale pre-prediction name.
+      // form.course_code (the numeric model input) is untouched.
+      if (responseBody.course) set('course', responseBody.course);
+      window.dispatchEvent(new Event('educere:students-changed'));
       onRefresh?.();
     } catch (err) { setError(err.message === 'Failed to fetch' ? 'Unable to reach the prediction service.' : err.message); } finally { setBusy(''); }
   };
@@ -224,7 +248,12 @@ function EditStudent({ student, onClose, onSaved, onRefresh }) {
       <div className="metric-row"><span className="k">Last analysed</span><span className="v">{prediction.analyzedAt ? new Date(prediction.analyzedAt).toLocaleString() : '—'}</span></div>
     </div> : <p className="chart-note" style={{ marginBottom: '1rem' }}>No prediction available yet — fill in the model inputs below and run one.</p>}
 
-    <form onSubmit={saveStudent}><div className="wizard-grid"><label>Full name<input required value={form.name || ''} onChange={(event) => set('name', event.target.value)} /></label><label>Course<input value={form.course || ''} onChange={(event) => set('course', event.target.value)} /></label><label>Attendance %<input type="number" min="0" max="100" step="0.1" value={form.attendance_percentage ?? ''} onChange={(event) => set('attendance_percentage', event.target.value)} /></label><label>GPA<input type="number" min="0" max="10" step="0.01" value={form.gpa ?? ''} onChange={(event) => set('gpa', event.target.value)} /></label><label>Admission grade<input type="number" value={form.admission_grade ?? ''} onChange={(event) => set('admission_grade', event.target.value)} /></label><label>1st-semester units enrolled<input type="number" value={form.units_1st_sem_enrolled ?? ''} onChange={(event) => set('units_1st_sem_enrolled', event.target.value)} /></label><label>1st-semester units approved<input type="number" value={form.units_1st_sem_approved ?? ''} onChange={(event) => set('units_1st_sem_approved', event.target.value)} /></label><label>2nd-semester units enrolled<input type="number" value={form.units_2nd_sem_enrolled ?? ''} onChange={(event) => set('units_2nd_sem_enrolled', event.target.value)} /></label><label>2nd-semester units approved<input type="number" value={form.units_2nd_sem_approved ?? ''} onChange={(event) => set('units_2nd_sem_approved', event.target.value)} /></label></div>
+    <form onSubmit={saveStudent}><div className="wizard-grid"><label>Full name<input required value={form.name || ''} onChange={(event) => set('name', event.target.value)} /></label><label>Attendance %<input type="number" min="0" max="100" step="0.1" value={form.attendance_percentage ?? ''} onChange={(event) => set('attendance_percentage', event.target.value)} /></label><label>GPA<input type="number" min="0" max="10" step="0.01" value={form.gpa ?? ''} onChange={(event) => set('gpa', event.target.value)} /></label></div>
+    {/* Course, Admission grade, and semester unit counts stay removed from here —
+        they duplicated fields already in "Risk analysis model data" below. Attendance
+        and GPA were restored per request: they have no equivalent in that section, so
+        this is their only editable slot. Values still round-trip unchanged for the
+        fields that remain removed (see saveStudent/runPrediction). */}
 
     <fieldset className="wizard-section"><legend>Risk analysis model data</legend>
       {PREDICTION_SECTIONS.map((section) => <fieldset className="wizard-section" key={section.title}>
