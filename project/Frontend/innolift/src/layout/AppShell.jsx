@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
   { to: '/students', label: 'Students', icon: 'students' },
   { to: '/predictor', label: 'Risk Predictor', icon: 'risk' },
+  { to: '/assignment-review', label: 'Assignment Review', icon: 'assignment' },
   { to: '/reports', label: 'Reports', icon: 'reports' },
   { to: '/settings', label: 'Settings', icon: 'settings' },
 ];
@@ -23,6 +24,7 @@ function NavIcon({ name }) {
     students: <><circle cx="9" cy="8" r="3" /><circle cx="17" cy="9" r="2.4" /><path d="M3.5 20c.7-3.2 2.6-4.8 5.5-4.8s4.8 1.6 5.5 4.8M15 15.5c2.9.1 4.7 1.6 5.2 4.5" /></>,
     risk: <><path d="M12 3 20 6v5.6c0 4.6-3.1 7.7-8 9.4-4.9-1.7-8-4.8-8-9.4V6l8-3Z" /><path d="M12 8v4M12 16h.01" /></>,
     reports: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>,
+    assignment: <><path d="M6 3.5h8l4 4V20.5H6z" /><path d="M14 3.5v4h4M9 12h6M9 15.5h6" /></>,
     settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.2 2.2-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5v.2h-3.2v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1-2.2-2.2.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H5v-3.2h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2.2-2.2.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V3.5h3.2v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 2.2 2.2-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.2V13h-.2a1.7 1.7 0 0 0-1.5 2Z" /></>,
   };
   return <svg className="nav-icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;

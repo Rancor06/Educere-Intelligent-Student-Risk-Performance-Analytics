@@ -23,7 +23,7 @@ export default function DashboardPage() {
       if (!active) return;
       setName(profile?.full_name || profile?.username || '');
       setStudents(Array.isArray(roster) ? roster : []);
-    }).catch(() => { }).finally(() => active && setLoading(false));
+    }).catch(() => {}).finally(() => active && setLoading(false));
     return () => { active = false; };
   }, []);
 
@@ -50,9 +50,7 @@ export default function DashboardPage() {
       .slice(0, 4)
       .map(({ student }) => student);
   }, [students]);
-  const hour = new Date().getHours();
-  const greetingTime = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-  const greeting = name ? `${greetingTime}, ${name}` : greetingTime;
+  const greeting = name ? `Good morning, ${name}` : 'Good morning';
 
   return <AppShell active="/dashboard">
     <div className="topbar"><div><span className="eyebrow">Student intelligence</span><h1>{greeting}</h1><p className="sub">Here’s where your cohort stands today.</p></div><Link to="/students?add=1" className="btn btn-primary">+ Add Student</Link></div>

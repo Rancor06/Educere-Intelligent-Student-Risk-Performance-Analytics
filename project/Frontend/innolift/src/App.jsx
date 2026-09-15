@@ -8,6 +8,7 @@ import SettingsPage from './pages/SettingsPage';
 import ReportsPage from './pages/ReportsPage';
 import StudentDashboardPage from './pages/StudentDashboardPage';
 import PredictorPage from './pages/PredictorPage';
+import AssignmentReviewPage from './pages/AssignmentReviewPage';
 
 // Each route below replaces one static .html page. Paths mirror the old
 // filenames (students.html -> /students) so nothing about the site's
@@ -26,6 +27,7 @@ function App() {
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/student-dashboard" element={<StudentDashboardPage />} />
         <Route path="/predictor" element={<PredictorPage />} />
+        <Route path="/assignment-review" element={<AssignmentReviewPage />} />
       </Routes>
     </BrowserRouter>
   );
