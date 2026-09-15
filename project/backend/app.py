@@ -4,11 +4,14 @@ import json
 import secrets
 import string
 from functools import wraps
+from dotenv import load_dotenv
+load_dotenv()
 from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 from werkzeug.security import check_password_hash, generate_password_hash
 from mysql.connector import Error
 from db import get_connection
+from assignment_reviewer import review_assignment
 from ml.model import (
     predict_risk as run_dropout_prediction,
     validate_input as validate_prediction_input,
@@ -61,6 +64,10 @@ if not _cors_origins:
             "set CORS_ALLOWED_ORIGINS to the deployed frontend URL(s) (see .env.example)."
         )
 CORS(app, supports_credentials=True, origins=_cors_origins)
+
+# Assignment uploads are transient and only need to support hackathon-scale demos.
+# Keep the limit bounded so a large accidental upload cannot exhaust backend memory/disk.
+app.config["MAX_CONTENT_LENGTH"] = 12 * 1024 * 1024
 
 
 # ---------- Auth helpers ----------
@@ -693,6 +700,54 @@ def student_dashboard():
     # risk_prediction (the plain label — "Graduate"/"Watch"/"At risk" once
     # mapped by the frontend) is student-facing status, not a detailed score.
     return jsonify(student)
+
+
+
+# ---------- Intelligent Assignment Review ----------
+
+@app.route("/api/assignments/review", methods=["POST"])
+@login_required
+def assignment_review():
+    """Evaluate an assignment using rubric-aware NLP, with optional visual/LLM input."""
+    question = (request.form.get("question") or "").strip()
+    reference = (request.form.get("reference_answer") or "").strip()
+    rubric = (request.form.get("rubric") or "").strip()
+    answer = (request.form.get("student_answer") or "").strip()
+    uploaded = request.files.get("file")
+
+    if not question:
+        return jsonify({"success": False, "error": "Question / prompt is required."}), 400
+    if not answer and not uploaded:
+        return jsonify({"success": False, "error": "Provide a student answer or upload a submission."}), 400
+
+    temp_path = ""
+    try:
+        if uploaded and uploaded.filename:
+            import tempfile
+            suffix = os.path.splitext(uploaded.filename or "")[1].lower()
+            if suffix not in {".pdf", ".png", ".jpg", ".jpeg", ".txt"}:
+                return jsonify({"success": False, "error": "Supported files: PDF, PNG, JPG and TXT."}), 400
+            fd, temp_path = tempfile.mkstemp(prefix="educere_assignment_", suffix=suffix)
+            os.close(fd)
+            uploaded.save(temp_path)
+
+        review = review_assignment(
+            question=question,
+            reference=reference,
+            rubric=rubric,
+            answer=answer,
+            file_path=temp_path,
+            mimetype=uploaded.mimetype if uploaded else "",
+        )
+        return jsonify({"success": True, "review": review}), 200
+    except Exception as exc:
+        return jsonify({"success": False, "error": f"Assignment review failed: {exc}"}), 500
+    finally:
+        if temp_path:
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
 
 
 # ---------- Day 46: ML prediction endpoint ----------

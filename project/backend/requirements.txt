@@ -7,3 +7,5 @@ gunicorn
 scikit-learn==1.6.1
 pandas
 numpy
+pypdf
+google-genai
